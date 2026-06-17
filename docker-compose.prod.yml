@@ -1,0 +1,48 @@
+# Production compose file — pulls pre-built images from GHCR.
+# Images are published automatically on every push to main/master by
+# .github/workflows/docker-build.yml
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# To pin a specific commit instead of latest:
+#   BACKEND_TAG=master-abc1234 FRONTEND_TAG=master-abc1234 docker compose -f docker-compose.prod.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: tastetogether
+      POSTGRES_USER: tastetogether
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tastetogether}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tastetogether"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    image: ghcr.io/wagnerluca/tastetogether-backend:${BACKEND_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://tastetogether:${POSTGRES_PASSWORD:-tastetogether}@postgres:5432/tastetogether
+      PORT: "3001"
+      NODE_ENV: production
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    image: ghcr.io/wagnerluca/tastetogether-frontend:${FRONTEND_TAG:-latest}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-80}:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
