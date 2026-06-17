@@ -151,8 +151,8 @@ export default function ParticipantEvent() {
           </div>
         </div>
 
-        {/* Active item */}
-        {activeItem && activeItemData ? (
+        {/* Active item — hidden once the host reveals the final results */}
+        {!resultsRevealed && (activeItem && activeItemData ? (
           <div className="bg-white rounded-2xl shadow-md p-6 space-y-5">
             <div>
               <div className="text-xs font-medium text-rose-500 uppercase tracking-wider mb-2">Now Tasting</div>
@@ -200,7 +200,7 @@ export default function ParticipantEvent() {
             <div className="text-4xl mb-3">⏳</div>
             <p className="text-stone-600 font-medium">Waiting for the host to start the next tasting…</p>
           </div>
-        )}
+        ))}
 
         {/* Official results — shown once the host reveals the ranking */}
         {resultsRevealed && <ResultsOverview items={items} />}

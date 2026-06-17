@@ -229,6 +229,13 @@ eventsRouter.patch(
         res.status(404).json({ error: 'Item not found' });
         return;
       }
+      // Starting a tasting resumes the event — hide any revealed results.
+      if (req.event!.resultsRevealed) {
+        await prisma.event.update({
+          where: { id: req.event!.id },
+          data: { resultsRevealed: false },
+        });
+      }
       const updated = await prisma.tastingItem.update({
         where: { id: itemId },
         data: { isActive: true },
@@ -249,6 +256,14 @@ eventsRouter.patch(
     if (typeof revealed !== 'boolean') {
       res.status(400).json({ error: 'revealed must be a boolean' });
       return;
+    }
+
+    // Revealing the final results ends the tasting — deactivate any active item.
+    if (revealed) {
+      await prisma.tastingItem.updateMany({
+        where: { eventId: req.event!.id, isActive: true },
+        data: { isActive: false },
+      });
     }
 
     const updated = await prisma.event.update({
