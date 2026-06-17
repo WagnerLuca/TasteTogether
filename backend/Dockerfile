@@ -2,12 +2,13 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Copy manifests and schema first so npm ci layer is cached independently
 COPY package*.json ./
 COPY prisma ./prisma/
+# postinstall runs `prisma generate` automatically
 RUN npm ci
 
 COPY . .
-RUN npx prisma generate
 RUN npm run build
 
 
@@ -21,7 +22,8 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/prisma ./prisma
 COPY entrypoint.sh ./entrypoint.sh
 
-RUN chmod +x ./entrypoint.sh
+# Normalize line endings — entrypoint.sh may be CRLF on Windows checkouts
+RUN sed -i 's/\r//' entrypoint.sh && chmod +x entrypoint.sh
 
 EXPOSE 3001
 
