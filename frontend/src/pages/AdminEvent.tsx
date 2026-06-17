@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, FormEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import QRCode from 'react-qr-code';
 import { getEventStatus, addTastingItem, setActiveItem, postComment, hasAdminToken } from '../api/client';
 import { EventStatus, TastingItem } from '../types';
 import StarRating from '../components/StarRating';
@@ -21,7 +22,7 @@ export default function AdminEvent() {
   const [addItemError, setAddItemError] = useState('');
 
   const [activating, setActivating] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<'code' | 'link' | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -87,8 +88,16 @@ export default function AdminEvent() {
 
   function copyCode() {
     navigator.clipboard.writeText(code ?? '');
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopied('code');
+    setTimeout(() => setCopied(null), 2000);
+  }
+
+  function copyLink() {
+    if (!code) return;
+    const url = `${window.location.origin}/event/${code}`;
+    navigator.clipboard.writeText(url);
+    setCopied('link');
+    setTimeout(() => setCopied(null), 2000);
   }
 
   if (error) {
@@ -108,6 +117,7 @@ export default function AdminEvent() {
   }
 
   const { event, participants, activeItem, ratingProgress, items, comments } = status;
+  const joinUrl = `${window.location.origin}/event/${event.code}`;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-stone-50 to-rose-50 p-4 pb-10">
@@ -115,23 +125,56 @@ export default function AdminEvent() {
 
         {/* Header */}
         <div className="bg-white rounded-2xl shadow-md p-6">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <div className="text-xs font-medium text-rose-600 uppercase tracking-wider mb-1">Admin View</div>
-              <h1 className="text-2xl font-bold text-stone-800">{event.name}</h1>
+          <div className="text-xs font-medium text-rose-600 uppercase tracking-wider mb-1">Admin View</div>
+          <h1 className="text-2xl font-bold text-stone-800 mb-5">{event.name}</h1>
+
+          {/* Share card */}
+          <div className="flex gap-5 items-center flex-wrap">
+            {/* QR Code */}
+            <div className="bg-white p-3 rounded-xl border-2 border-stone-200 shrink-0">
+              <QRCode
+                value={joinUrl}
+                size={128}
+                fgColor="#44403c"
+                bgColor="#ffffff"
+              />
             </div>
-            <button
-              onClick={copyCode}
-              className="flex items-center gap-2 bg-stone-100 hover:bg-stone-200 transition-colors rounded-xl px-4 py-2 text-sm font-mono font-bold tracking-widest text-stone-700"
-              title="Copy event code"
-            >
-              {event.code}
-              <span className="text-xs font-sans font-normal text-stone-400">{copied ? '✓ Copied' : 'Copy'}</span>
-            </button>
+
+            {/* Code + actions */}
+            <div className="flex-1 min-w-0 space-y-3">
+              <div>
+                <p className="text-xs text-stone-400 uppercase tracking-wider mb-1">Event code</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-4xl font-black font-mono tracking-[0.3em] text-stone-800">
+                    {event.code}
+                  </span>
+                  <button
+                    onClick={copyCode}
+                    className="text-xs bg-stone-100 hover:bg-stone-200 text-stone-600 px-2.5 py-1 rounded-lg transition-colors"
+                  >
+                    {copied === 'code' ? '✓ Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs text-stone-400 uppercase tracking-wider mb-1">Join link</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-stone-500 truncate font-mono">{joinUrl}</span>
+                  <button
+                    onClick={copyLink}
+                    className="text-xs bg-stone-100 hover:bg-stone-200 text-stone-600 px-2.5 py-1 rounded-lg transition-colors shrink-0"
+                  >
+                    {copied === 'link' ? '✓ Copied' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+
+              <p className="text-xs text-stone-400">
+                Scan the QR code or share the link / code to invite participants.
+              </p>
+            </div>
           </div>
-          <p className="mt-3 text-sm text-stone-500">
-            Share the code above so participants can join at the app.
-          </p>
         </div>
 
         {/* Participants */}
