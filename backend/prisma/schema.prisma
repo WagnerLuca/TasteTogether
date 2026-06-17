@@ -9,11 +9,12 @@ datasource db {
 }
 
 model Event {
-  id           String        @id @default(uuid())
-  name         String
-  code         String        @unique
-  adminToken   String        @unique
-  createdAt    DateTime      @default(now())
+  id              String        @id @default(uuid())
+  name            String
+  code            String        @unique
+  adminToken      String        @unique
+  resultsRevealed Boolean       @default(false)
+  createdAt       DateTime      @default(now())
 
   participants Participant[]
   tastingItems TastingItem[]
@@ -52,7 +53,7 @@ model Rating {
   participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
   tastingItemId String
   tastingItem   TastingItem @relation(fields: [tastingItemId], references: [id], onDelete: Cascade)
-  score         Int
+  score         Float
   createdAt     DateTime    @default(now())
 
   @@unique([participantId, tastingItemId])

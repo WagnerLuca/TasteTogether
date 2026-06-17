@@ -3,6 +3,7 @@ export interface EventMeta {
   name: string;
   code: string;
   createdAt: string;
+  resultsRevealed?: boolean;
 }
 
 export interface Participant {

@@ -4,6 +4,7 @@ import { getEventStatus, joinEvent, rateItem, postComment, saveSession, getStore
 import { EventStatus } from '../types';
 import StarRating from '../components/StarRating';
 import CommentSection from '../components/CommentSection';
+import ResultsOverview from '../components/ResultsOverview';
 
 const POLL_INTERVAL = 3000;
 
@@ -134,6 +135,7 @@ export default function ParticipantEvent() {
   const { event, participantCount, activeItem, ratingProgress, items, hasRatedActiveItem, myRatingForActiveItem } = status;
   const activeItemData = activeItem ? items.find(i => i.id === activeItem.id) : null;
   const completedItems = items.filter(i => !i.isActive && i.ratingsCount > 0);
+  const resultsRevealed = !!event.resultsRevealed;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-stone-50 to-rose-50 p-4 pb-10">
@@ -199,8 +201,11 @@ export default function ParticipantEvent() {
           </div>
         )}
 
-        {/* Completed items with per-item comments */}
-        {completedItems.length > 0 && (
+        {/* Official results — shown once the host reveals the ranking */}
+        {resultsRevealed && <ResultsOverview items={items} />}
+
+        {/* Completed items with per-item comments (hidden once full results are revealed) */}
+        {!resultsRevealed && completedItems.length > 0 && (
           <div className="space-y-4">
             <h3 className="font-semibold text-stone-600 px-1">Tasted So Far</h3>
             {completedItems.map((item) => (

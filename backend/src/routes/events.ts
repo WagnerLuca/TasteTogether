@@ -132,7 +132,13 @@ eventsRouter.get(
     }
 
     res.json({
-      event: { id: event.id, name: event.name, code: event.code, createdAt: event.createdAt },
+      event: {
+        id: event.id,
+        name: event.name,
+        code: event.code,
+        createdAt: event.createdAt,
+        resultsRevealed: event.resultsRevealed,
+      },
       participants: event.participants.map((p) => ({
         id: p.id,
         username: p.username,
@@ -234,14 +240,34 @@ eventsRouter.patch(
   })
 );
 
+// PATCH /api/events/:code/results — reveal or hide the ranking overview to everyone (admin)
+eventsRouter.patch(
+  '/:code/results',
+  requireAdmin,
+  wrap(async (req, res) => {
+    const { revealed } = req.body as { revealed?: boolean };
+    if (typeof revealed !== 'boolean') {
+      res.status(400).json({ error: 'revealed must be a boolean' });
+      return;
+    }
+
+    const updated = await prisma.event.update({
+      where: { id: req.event!.id },
+      data: { resultsRevealed: revealed },
+    });
+    res.json({ resultsRevealed: updated.resultsRevealed });
+  })
+);
+
 // POST /api/events/:code/items/:itemId/rate — submit or update a rating (participant)
 eventsRouter.post(
   '/:code/items/:itemId/rate',
   requireParticipant,
   wrap(async (req, res) => {
     const { score } = req.body as { score?: number };
-    if (typeof score !== 'number' || score < 1 || score > 5 || !Number.isInteger(score)) {
-      res.status(400).json({ error: 'Score must be an integer between 1 and 5' });
+    // Scores range 0.5–10 in half-star (0.5) increments.
+    if (typeof score !== 'number' || score < 0.5 || score > 10 || !Number.isInteger(score * 2)) {
+      res.status(400).json({ error: 'Score must be a multiple of 0.5 between 0.5 and 10' });
       return;
     }
 

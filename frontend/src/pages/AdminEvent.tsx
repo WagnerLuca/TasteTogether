@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef, FormEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code';
-import { getEventStatus, addTastingItem, setActiveItem, hasAdminToken } from '../api/client';
+import { getEventStatus, addTastingItem, setActiveItem, setResultsRevealed, hasAdminToken } from '../api/client';
 import { EventStatus, TastingItem } from '../types';
 import StarRating from '../components/StarRating';
 import CommentSection from '../components/CommentSection';
+import ResultsOverview from '../components/ResultsOverview';
 
 const POLL_INTERVAL = 3000;
 
@@ -21,6 +22,7 @@ export default function AdminEvent() {
   const [addItemError, setAddItemError] = useState('');
 
   const [activating, setActivating] = useState<string | null>(null);
+  const [togglingResults, setTogglingResults] = useState(false);
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -75,6 +77,17 @@ export default function AdminEvent() {
     }
   }
 
+  async function handleToggleResults(revealed: boolean) {
+    if (!code) return;
+    setTogglingResults(true);
+    try {
+      await setResultsRevealed(code, revealed);
+      await fetchStatus();
+    } finally {
+      setTogglingResults(false);
+    }
+  }
+
   function copyCode() {
     navigator.clipboard.writeText(code ?? '');
     setCopied('code');
@@ -94,6 +107,8 @@ export default function AdminEvent() {
   const { event, participants, activeItem, ratingProgress, items } = status;
   const joinUrl = `${window.location.origin}/event/${event.code}`;
   const activeItemData = activeItem ? items.find(i => i.id === activeItem.id) : null;
+  const resultsRevealed = !!event.resultsRevealed;
+  const hasRatedItems = items.some((i) => i.avgScore !== null);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-stone-50 to-rose-50 p-4 pb-10">
@@ -267,6 +282,41 @@ export default function AdminEvent() {
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Results reveal control */}
+        {hasRatedItems && (
+          <div className="bg-white rounded-2xl shadow-md p-6">
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <h2 className="font-semibold text-stone-700">Results & Ranking</h2>
+                <p className="text-sm text-stone-500">
+                  {resultsRevealed
+                    ? 'Visible to all participants.'
+                    : 'Hidden — only you can see the ranking below.'}
+                </p>
+              </div>
+              <button
+                onClick={() => handleToggleResults(!resultsRevealed)}
+                disabled={togglingResults}
+                className={`text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 ${
+                  resultsRevealed
+                    ? 'bg-stone-200 text-stone-700 hover:bg-stone-300'
+                    : 'bg-rose-700 text-white hover:bg-rose-800'
+                }`}
+              >
+                {togglingResults
+                  ? 'Saving…'
+                  : resultsRevealed
+                  ? 'Hide from participants'
+                  : 'Reveal to everyone'}
+              </button>
+            </div>
+
+            <div className="mt-6">
+              <ResultsOverview items={items} />
             </div>
           </div>
         )}

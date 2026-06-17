@@ -41,11 +41,12 @@ The frontend polls `/api/events/:code/status` every 3 seconds for live updates (
 
 ```
 Event
-  id           UUID PK
-  name         TEXT
-  code         TEXT UNIQUE        ← 6-char share code (e.g. "HK3PQ7")
-  adminToken   TEXT UNIQUE        ← returned only at creation, stored client-side
-  createdAt    TIMESTAMP
+  id              UUID PK
+  name            TEXT
+  code            TEXT UNIQUE      ← 6-char share code (e.g. "HK3PQ7")
+  adminToken      TEXT UNIQUE      ← returned only at creation, stored client-side
+  resultsRevealed BOOLEAN          ← when true, all participants see the ranking
+  createdAt       TIMESTAMP
 
 Participant
   id           UUID PK
@@ -67,13 +68,13 @@ Rating
   id           UUID PK
   participantId UUID FK → Participant
   tastingItemId UUID FK → TastingItem
-  score         INT (1–5)
+  score         FLOAT (0.5–10, in 0.5 half-star steps)
   createdAt     TIMESTAMP
   UNIQUE(participantId, tastingItemId)  ← one rating per participant per item
 
 Comment
   id            UUID PK
-  eventId       UUID FK → Event
+  tastingItemId UUID FK → TastingItem   ← comments are scoped per tasting item
   participantId UUID FK → Participant
   text          TEXT
   createdAt     TIMESTAMP
@@ -115,20 +116,27 @@ Response includes `adminToken` — **store this, it is never returned again**.
 |--------|------|------|-------------|
 | `POST` | `/:code/items` | Admin | Add a tasting item |
 | `PATCH` | `/:code/active-item` | Admin | Set or clear the active item |
+| `PATCH` | `/:code/results` | Admin | Reveal or hide the ranking for everyone |
 
 `PATCH /:code/active-item` body: `{ "itemId": "uuid" }` or `{ "itemId": null }` to deactivate all.
+
+`PATCH /:code/results` body: `{ "revealed": true }` or `{ "revealed": false }`.
 
 ### Ratings (Participant)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/:code/items/:id/rate` | Participant | Submit or update a rating (1–5) |
+| `POST` | `/:code/items/:id/rate` | Participant | Submit or update a rating |
+
+`POST /:code/items/:id/rate` body: `{ "score": 7.5 }` — score is a multiple of `0.5` between `0.5` and `10` (half-star granularity).
 
 ### Comments (Participant)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/:code/comments` | Participant | Post a comment |
+| `POST` | `/:code/items/:id/comments` | Participant | Post a comment on a specific item |
+
+Comments are scoped to individual tasting items. Each item carries its own `comments[]` array in the status response.
 
 ### Authentication
 
@@ -153,12 +161,15 @@ Host                                    Participants
 5. Add tasting item (name + price)
 6. Activate item → participants notified
                                         7. See active item name + price
-                                        8. Submit star rating (1–5)
-9. See rating progress (X/Y rated)
-10. Can see avg score per item
-                                        9. Post comments (visible to all)
-11. Deactivate item, add next item
+                                        8. Submit half-star rating (0.5–10)
+                                        9. Post comments on that item
+10. See rating progress (X/Y rated)
+11. See per-participant scores + avg
+12. Deactivate item, add next item
     Repeat from step 5
+13. Reveal results → everyone sees
+    podium (🥇🥈🥉) + full ranking
+    with collapsible comments
 ```
 
 ---

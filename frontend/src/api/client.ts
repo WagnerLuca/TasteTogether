@@ -71,6 +71,14 @@ export async function setActiveItem(code: string, itemId: string | null) {
   return data;
 }
 
+export async function setResultsRevealed(code: string, revealed: boolean) {
+  const adminToken = getAdminToken(code)!;
+  const { data } = await api.patch(`/events/${code}/results`, { revealed }, {
+    headers: { 'X-Admin-Token': adminToken },
+  });
+  return data as { resultsRevealed: boolean };
+}
+
 // Participant actions
 export async function rateItem(code: string, itemId: string, score: number) {
   const session = getSession(code)!;
