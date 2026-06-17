@@ -17,7 +17,6 @@ model Event {
 
   participants Participant[]
   tastingItems TastingItem[]
-  comments     Comment[]
 }
 
 model Participant {
@@ -43,7 +42,8 @@ model TastingItem {
   isActive  Boolean   @default(false)
   createdAt DateTime  @default(now())
 
-  ratings Rating[]
+  ratings  Rating[]
+  comments Comment[]
 }
 
 model Rating {
@@ -60,8 +60,8 @@ model Rating {
 
 model Comment {
   id            String      @id @default(uuid())
-  eventId       String
-  event         Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  tastingItemId String
+  tastingItem   TastingItem @relation(fields: [tastingItemId], references: [id], onDelete: Cascade)
   participantId String
   participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
   text          String

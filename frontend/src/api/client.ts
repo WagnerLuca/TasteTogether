@@ -80,9 +80,9 @@ export async function rateItem(code: string, itemId: string, score: number) {
   return data;
 }
 
-export async function postComment(code: string, text: string) {
+export async function postComment(code: string, itemId: string, text: string) {
   const session = getSession(code)!;
-  const { data } = await api.post(`/events/${code}/comments`, { text }, {
+  const { data } = await api.post(`/events/${code}/items/${itemId}/comments`, { text }, {
     headers: { 'X-Session-Token': session.sessionToken },
   });
   return data;

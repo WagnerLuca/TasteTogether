@@ -15,12 +15,10 @@ export default function ParticipantEvent() {
   const [username, setUsername] = useState<string | null>(null);
   const [error, setError] = useState('');
 
-  // Join form (shown if not yet joined)
   const [joinName, setJoinName] = useState('');
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState('');
 
-  // Rating
   const [selectedScore, setSelectedScore] = useState(0);
   const [submittingRating, setSubmittingRating] = useState(false);
   const [ratingError, setRatingError] = useState('');
@@ -29,14 +27,12 @@ export default function ParticipantEvent() {
 
   useEffect(() => {
     if (!code) { navigate('/'); return; }
-    const stored = getStoredUsername(code);
-    setUsername(stored);
+    setUsername(getStoredUsername(code));
     fetchStatus();
     pollRef.current = setInterval(fetchStatus, POLL_INTERVAL);
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [code]);
 
-  // Reset selected score when active item changes
   useEffect(() => {
     setSelectedScore(status?.myRatingForActiveItem ?? 0);
     setRatingError('');
@@ -45,8 +41,7 @@ export default function ParticipantEvent() {
   async function fetchStatus() {
     if (!code) return;
     try {
-      const data = await getEventStatus(code);
-      setStatus(data);
+      setStatus(await getEventStatus(code));
     } catch {
       setError('Could not load event. The code may be invalid.');
     }
@@ -86,67 +81,59 @@ export default function ParticipantEvent() {
   }
 
   async function handleComment(text: string) {
-    if (!code) return;
-    await postComment(code, text);
+    if (!code || !status?.activeItem) return;
+    await postComment(code, status.activeItem.id, text);
     await fetchStatus();
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-4">
-        <p className="text-red-600 text-center">{error}</p>
-        <button onClick={() => navigate('/')} className="text-rose-700 underline text-sm">
-          Go home
-        </button>
-      </div>
-    );
-  }
+  if (error) return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-4">
+      <p className="text-red-600 text-center">{error}</p>
+      <button onClick={() => navigate('/')} className="text-rose-700 underline text-sm">Go home</button>
+    </div>
+  );
 
-  if (!status) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-stone-400 animate-pulse">Loading…</p>
-      </div>
-    );
-  }
+  if (!status) return (
+    <div className="min-h-screen flex items-center justify-center">
+      <p className="text-stone-400 animate-pulse">Loading…</p>
+    </div>
+  );
 
-  // Not yet joined — show join form
-  if (!username) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-stone-50 to-rose-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-md p-8 w-full max-w-sm">
-          <div className="text-center mb-6">
-            <div className="text-4xl mb-2">🍷</div>
-            <h1 className="text-xl font-bold text-stone-800">{status.event.name}</h1>
-            <p className="text-stone-500 text-sm mt-1">Enter your name to join</p>
-          </div>
-          <form onSubmit={handleJoin} className="space-y-3">
-            <input
-              type="text"
-              value={joinName}
-              onChange={(e) => setJoinName(e.target.value)}
-              placeholder="Your name"
-              maxLength={40}
-              required
-              autoFocus
-              className="w-full border border-stone-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
-            />
-            {joinError && <p className="text-red-600 text-xs">{joinError}</p>}
-            <button
-              type="submit"
-              disabled={joining || !joinName.trim()}
-              className="w-full bg-rose-700 text-white font-medium py-2.5 rounded-lg hover:bg-rose-800 disabled:opacity-50 transition-colors"
-            >
-              {joining ? 'Joining…' : 'Join Tasting'}
-            </button>
-          </form>
+  if (!username) return (
+    <div className="min-h-screen bg-gradient-to-br from-stone-50 to-rose-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-md p-8 w-full max-w-sm">
+        <div className="text-center mb-6">
+          <div className="text-4xl mb-2">🍷</div>
+          <h1 className="text-xl font-bold text-stone-800">{status.event.name}</h1>
+          <p className="text-stone-500 text-sm mt-1">Enter your name to join</p>
         </div>
+        <form onSubmit={handleJoin} className="space-y-3">
+          <input
+            type="text"
+            value={joinName}
+            onChange={(e) => setJoinName(e.target.value)}
+            placeholder="Your name"
+            maxLength={40}
+            required
+            autoFocus
+            className="w-full border border-stone-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
+          />
+          {joinError && <p className="text-red-600 text-xs">{joinError}</p>}
+          <button
+            type="submit"
+            disabled={joining || !joinName.trim()}
+            className="w-full bg-rose-700 text-white font-medium py-2.5 rounded-lg hover:bg-rose-800 disabled:opacity-50 transition-colors"
+          >
+            {joining ? 'Joining…' : 'Join Tasting'}
+          </button>
+        </form>
       </div>
-    );
-  }
+    </div>
+  );
 
-  const { event, participantCount, activeItem, ratingProgress, items, comments, hasRatedActiveItem, myRatingForActiveItem } = status;
-  const completedItems = items.filter((i) => !i.isActive && i.ratingsCount > 0);
+  const { event, participantCount, activeItem, ratingProgress, items, hasRatedActiveItem, myRatingForActiveItem } = status;
+  const activeItemData = activeItem ? items.find(i => i.id === activeItem.id) : null;
+  const completedItems = items.filter(i => !i.isActive && i.ratingsCount > 0);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-stone-50 to-rose-50 p-4 pb-10">
@@ -162,15 +149,18 @@ export default function ParticipantEvent() {
         </div>
 
         {/* Active item */}
-        {activeItem ? (
-          <div className="bg-white rounded-2xl shadow-md p-6">
-            <div className="text-xs font-medium text-rose-500 uppercase tracking-wider mb-2">Now Tasting</div>
-            <h2 className="text-2xl font-bold text-stone-800">{activeItem.name}</h2>
-            <p className="text-stone-500 font-medium mt-0.5">€{activeItem.price.toFixed(2)}</p>
+        {activeItem && activeItemData ? (
+          <div className="bg-white rounded-2xl shadow-md p-6 space-y-5">
+            <div>
+              <div className="text-xs font-medium text-rose-500 uppercase tracking-wider mb-2">Now Tasting</div>
+              <h2 className="text-2xl font-bold text-stone-800">{activeItem.name}</h2>
+              <p className="text-stone-500 font-medium mt-0.5">€{activeItem.price.toFixed(2)}</p>
+            </div>
 
-            <div className="mt-5">
+            {/* Rating */}
+            <div>
               {hasRatedActiveItem ? (
-                <div className="space-y-2">
+                <div className="space-y-1">
                   <p className="text-sm text-stone-500">Your rating:</p>
                   <StarRating value={myRatingForActiveItem ?? 0} disabled />
                   <p className="text-xs text-stone-400">
@@ -192,6 +182,15 @@ export default function ParticipantEvent() {
                 </form>
               )}
             </div>
+
+            {/* Comments for active item */}
+            <div className="pt-4 border-t border-stone-100">
+              <CommentSection
+                comments={activeItemData.comments}
+                onSubmit={handleComment}
+                canComment={true}
+              />
+            </div>
           </div>
         ) : (
           <div className="bg-white rounded-2xl shadow-md p-6 text-center">
@@ -200,37 +199,34 @@ export default function ParticipantEvent() {
           </div>
         )}
 
-        {/* Previous items */}
+        {/* Completed items with per-item comments */}
         {completedItems.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-md p-5">
-            <h3 className="font-semibold text-stone-700 mb-3">Tasted So Far</h3>
-            <div className="space-y-2">
-              {completedItems.map((item) => (
-                <div key={item.id} className="flex items-center justify-between text-sm py-1.5 border-b border-stone-100 last:border-0">
+          <div className="space-y-4">
+            <h3 className="font-semibold text-stone-600 px-1">Tasted So Far</h3>
+            {completedItems.map((item) => (
+              <div key={item.id} className="bg-white rounded-2xl shadow-md p-5">
+                <div className="flex items-start justify-between gap-3 mb-1">
                   <div>
-                    <span className="font-medium text-stone-800">{item.name}</span>
-                    <span className="text-stone-400 ml-2">€{item.price.toFixed(2)}</span>
+                    <span className="font-semibold text-stone-800">{item.name}</span>
+                    <span className="text-stone-400 text-sm ml-2">€{item.price.toFixed(2)}</span>
                   </div>
                   {item.avgScore !== null && (
-                    <span className="text-amber-600 font-semibold flex items-center gap-1">
+                    <span className="text-amber-600 font-bold flex items-center gap-1 shrink-0">
                       ★ {item.avgScore.toFixed(1)}
                       <span className="text-stone-400 font-normal text-xs">({item.ratingsCount})</span>
                     </span>
                   )}
                 </div>
-              ))}
-            </div>
+
+                {item.comments.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-stone-100">
+                    <CommentSection comments={item.comments} canComment={false} />
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
-
-        {/* Comments */}
-        <div className="bg-white rounded-2xl shadow-md p-5">
-          <CommentSection
-            comments={comments}
-            onSubmit={handleComment}
-            canComment={true}
-          />
-        </div>
       </div>
     </div>
   );

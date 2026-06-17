@@ -77,11 +77,11 @@ eventsRouter.get(
             ratings: {
               include: { participant: { select: { username: true } } },
             },
+            comments: {
+              orderBy: { createdAt: 'asc' },
+              include: { participant: { select: { username: true } } },
+            },
           },
-        },
-        comments: {
-          orderBy: { createdAt: 'asc' },
-          include: { participant: { select: { username: true } } },
         },
       },
     });
@@ -111,6 +111,12 @@ eventsRouter.get(
         createdAt: item.createdAt,
         ratingsCount: item.ratings.length,
         avgScore: avgScore !== null ? Math.round(avgScore * 10) / 10 : null,
+        comments: item.comments.map((c) => ({
+          id: c.id,
+          text: c.text,
+          createdAt: c.createdAt,
+          username: c.participant.username,
+        })),
         ...(isAdmin && {
           ratings: item.ratings.map((r) => ({ username: r.participant.username, score: r.score })),
         }),
@@ -138,12 +144,6 @@ eventsRouter.get(
         : null,
       ratingProgress: { rated: ratedCount, total: totalParticipants },
       items,
-      comments: event.comments.map((c) => ({
-        id: c.id,
-        text: c.text,
-        createdAt: c.createdAt,
-        username: c.participant.username,
-      })),
       hasRatedActiveItem,
       myRatingForActiveItem,
     });
@@ -267,9 +267,9 @@ eventsRouter.post(
   })
 );
 
-// POST /api/events/:code/comments — post a comment (participant)
+// POST /api/events/:code/items/:itemId/comments — post a comment on a specific item (participant)
 eventsRouter.post(
-  '/:code/comments',
+  '/:code/items/:itemId/comments',
   requireParticipant,
   wrap(async (req, res) => {
     const { text } = req.body as { text?: string };
@@ -278,8 +278,16 @@ eventsRouter.post(
       return;
     }
 
+    const item = await prisma.tastingItem.findFirst({
+      where: { id: req.params.itemId, eventId: req.event!.id },
+    });
+    if (!item) {
+      res.status(404).json({ error: 'Item not found' });
+      return;
+    }
+
     const comment = await prisma.comment.create({
-      data: { eventId: req.event!.id, participantId: req.participant!.id, text: text.trim() },
+      data: { tastingItemId: item.id, participantId: req.participant!.id, text: text.trim() },
       include: { participant: { select: { username: true } } },
     });
     res.status(201).json({
