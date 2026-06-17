@@ -1,0 +1,68 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Event {
+  id           String        @id @default(uuid())
+  name         String
+  code         String        @unique
+  adminToken   String        @unique
+  createdAt    DateTime      @default(now())
+
+  participants Participant[]
+  tastingItems TastingItem[]
+  comments     Comment[]
+}
+
+model Participant {
+  id           String    @id @default(uuid())
+  eventId      String
+  event        Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  username     String
+  sessionToken String    @unique
+  joinedAt     DateTime  @default(now())
+
+  ratings  Rating[]
+  comments Comment[]
+
+  @@unique([eventId, username])
+}
+
+model TastingItem {
+  id        String    @id @default(uuid())
+  eventId   String
+  event     Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  name      String
+  price     Float
+  isActive  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+
+  ratings Rating[]
+}
+
+model Rating {
+  id            String      @id @default(uuid())
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  tastingItemId String
+  tastingItem   TastingItem @relation(fields: [tastingItemId], references: [id], onDelete: Cascade)
+  score         Int
+  createdAt     DateTime    @default(now())
+
+  @@unique([participantId, tastingItemId])
+}
+
+model Comment {
+  id            String      @id @default(uuid())
+  eventId       String
+  event         Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  participantId String
+  participant   Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  text          String
+  createdAt     DateTime    @default(now())
+}
