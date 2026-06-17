@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getEventStatus, joinEvent, rateItem, postComment, saveSession, getStoredUsername } from '../api/client';
 import { EventStatus } from '../types';
 import StarRating from '../components/StarRating';
+import RatingInput from '../components/RatingInput';
 import CommentSection from '../components/CommentSection';
 import ResultsOverview from '../components/ResultsOverview';
 
@@ -164,20 +165,20 @@ export default function ParticipantEvent() {
               {hasRatedActiveItem ? (
                 <div className="space-y-1">
                   <p className="text-sm text-stone-500">Your rating:</p>
-                  <StarRating value={myRatingForActiveItem ?? 0} disabled />
+                  <StarRating value={myRatingForActiveItem ?? 0} disabled size="md" />
                   <p className="text-xs text-stone-400">
                     {ratingProgress.rated} of {ratingProgress.total} people have rated
                   </p>
                 </div>
               ) : (
-                <form onSubmit={handleRate} className="space-y-3">
+                <form onSubmit={handleRate} className="space-y-5">
                   <p className="text-sm text-stone-600 font-medium">Rate this item:</p>
-                  <StarRating value={selectedScore} onChange={setSelectedScore} />
+                  <RatingInput value={selectedScore} onChange={setSelectedScore} />
                   {ratingError && <p className="text-red-600 text-xs">{ratingError}</p>}
                   <button
                     type="submit"
                     disabled={submittingRating || selectedScore === 0}
-                    className="bg-rose-700 text-white px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-rose-800 disabled:opacity-50 transition-colors"
+                    className="w-full sm:w-auto bg-rose-700 text-white px-6 py-3 rounded-lg text-sm font-medium hover:bg-rose-800 disabled:opacity-50 transition-colors"
                   >
                     {submittingRating ? 'Submitting…' : 'Submit Rating'}
                   </button>
