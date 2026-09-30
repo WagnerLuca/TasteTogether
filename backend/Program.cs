@@ -47,6 +47,7 @@ using (var scope = app.Services.CreateScope())
     await db.Database.ExecuteSqlRawAsync("""
         ALTER TABLE "Event" DROP COLUMN IF EXISTS "adminToken";
         ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "adminPasswordHash" TEXT NOT NULL DEFAULT '';
+        ALTER TABLE "TastingItem" ADD COLUMN IF NOT EXISTS "position" INTEGER NOT NULL DEFAULT 0;
         """);
 }
 
@@ -114,7 +115,7 @@ events.MapGet("/{code}/status", async (string code, string? sessionToken, Claims
 {
     var ev = await db.Events.AsNoTracking().AsSplitQuery()
         .Include(e => e.Participants.OrderBy(p => p.JoinedAt))
-        .Include(e => e.TastingItems.OrderBy(i => i.CreatedAt)).ThenInclude(i => i.Ratings).ThenInclude(r => r.Participant)
+        .Include(e => e.TastingItems.OrderBy(i => i.Position).ThenBy(i => i.CreatedAt)).ThenInclude(i => i.Ratings).ThenInclude(r => r.Participant)
         .Include(e => e.TastingItems).ThenInclude(i => i.Comments.OrderBy(c => c.CreatedAt)).ThenInclude(c => c.Participant)
         .FirstOrDefaultAsync(e => e.Code == code);
     if (ev is null) return Error(404, "Event not found");
@@ -136,6 +137,7 @@ events.MapGet("/{code}/status", async (string code, string? sessionToken, Claims
             i.Id,
             i.Name,
             i.Price,
+            i.Position,
             i.IsActive,
             i.CreatedAt,
             ratingsCount = i.Ratings.Count,
@@ -144,6 +146,8 @@ events.MapGet("/{code}/status", async (string code, string? sessionToken, Claims
             comments = i.Comments.Select(c => new { c.Id, c.Text, c.CreatedAt, c.Participant!.Username }),
             ratings = isAdmin ? i.Ratings.Select(r => new { r.Participant!.Username, r.Score }) : null,
         }),
+        // null when no session token was sent; false when it was but isn't known (e.g. removed by the host).
+        sessionRecognized = sessionToken is null ? (bool?)null : me is not null,
         hasRatedActiveItem = myRating is not null,
         myRatingForActiveItem = myRating?.Score,
     });
@@ -180,10 +184,23 @@ admin.MapPost("/items", async (string code, ItemBody body, Db db) =>
     var ev = await db.Events.FirstOrDefaultAsync(e => e.Code == code);
     if (ev is null) return Error(404, "Event not found");
 
-    var item = new TastingItem { EventId = ev.Id, Name = name, Price = body.Price.Value };
+    var last = await db.TastingItems.Where(i => i.EventId == ev.Id).MaxAsync(i => (int?)i.Position) ?? -1;
+    var item = new TastingItem { EventId = ev.Id, Name = name, Price = body.Price.Value, Position = last + 1 };
     db.TastingItems.Add(item);
     await db.SaveChangesAsync();
-    return Results.Json(new { item.Id, item.EventId, item.Name, item.Price, item.IsActive, item.CreatedAt }, statusCode: 201);
+    return Results.Json(new { item.Id, item.EventId, item.Name, item.Price, item.Position, item.IsActive, item.CreatedAt }, statusCode: 201);
+});
+
+// Set the tasting order: every item of the event, exactly once, first to last.
+admin.MapPut("/items/order", async (string code, OrderBody body, Db db) =>
+{
+    var items = await db.TastingItems.Where(i => i.Event!.Code == code).ToListAsync();
+    var ids = body.ItemIds ?? [];
+    if (ids.Length != items.Count || ids.Distinct().Count() != ids.Length || ids.Any(id => items.All(i => i.Id != id)))
+        return Error(400, "itemIds must list every item of the event exactly once");
+    foreach (var item in items) item.Position = Array.IndexOf(ids, item.Id);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
 });
 
 admin.MapPatch("/active-item", async (string code, ActiveItemBody body, Db db) =>
@@ -201,6 +218,12 @@ admin.MapPatch("/active-item", async (string code, ActiveItemBody body, Db db) =
     await db.SaveChangesAsync();
     return Results.Ok(new { item.Id, item.EventId, item.Name, item.Price, item.IsActive, item.CreatedAt });
 });
+
+// Their ratings and comments go with them (ON DELETE CASCADE). They can rejoin under any name.
+admin.MapDelete("/participants/{participantId}", async (string code, string participantId, Db db) =>
+    await db.Participants.Where(p => p.Id == participantId && p.Event!.Code == code).ExecuteDeleteAsync() == 0
+        ? Error(404, "Participant not found")
+        : Results.NoContent());
 
 // Revealing the results ends the tasting: the active item is cleared.
 admin.MapPatch("/results", async (string code, ResultsBody body, Db db) =>
@@ -255,6 +278,7 @@ record LoginBody(string? Password);
 record JoinBody(string? Username);
 record ItemBody(string? Name, double? Price);
 record ActiveItemBody(string? ItemId);
+record OrderBody(string[]? ItemIds);
 record ResultsBody(bool? Revealed);
 record RateBody(double? Score);
 record CommentBody(string? Text);

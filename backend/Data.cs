@@ -34,6 +34,8 @@ public class TastingItem
     public Event? Event { get; set; }
     public string Name { get; set; } = "";
     public double Price { get; set; }
+    /// <summary>Tasting order set by the host; ties (items from before ordering existed) fall back to createdAt.</summary>
+    public int Position { get; set; }
     public bool IsActive { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public List<Rating> Ratings { get; set; } = [];

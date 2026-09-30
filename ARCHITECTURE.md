@@ -20,7 +20,7 @@ A real-time collaborative tasting platform where groups can rate and comment on 
 └─────────────┘
 ```
 
-The frontend polls `/api/events/:code/status` every 3 seconds for live updates (ratings progress, participant joins, new comments). No WebSocket dependency is required.
+The frontend polls `/api/events/:code/status` every 3 seconds for live updates (ratings progress, participant joins, new comments) — one hook, `frontend/src/useEventStatus.ts`, for both views. A failed poll is retried on the next tick with a "reconnecting" note; only a `404` ends it. No WebSocket dependency is required.
 
 ---
 
@@ -98,6 +98,7 @@ TastingItem
   eventId      UUID FK → Event
   name         TEXT               ← e.g. "Château Margaux 2018"
   price        FLOAT              ← e.g. 89.90
+  position     INT                ← running order set by the host (ties → createdAt)
   isActive     BOOLEAN            ← only one item active at a time
   createdAt    TIMESTAMP
 
@@ -149,12 +150,18 @@ again from any device.
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/:code/join` | — | Join with a username |
+| `DELETE` | `/:code/participants/:id` | Admin | Remove a participant — their ratings and comments go too (FK cascade). They can rejoin under any name. |
+
+A removed participant's next status poll carries `sessionRecognized: false`
+(it is `null` when no `sessionToken` was sent at all); the participant view then
+drops the stored session and shows the join form with a notice.
 
 ### Tasting Items (Admin)
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| `POST` | `/:code/items` | Admin | Add a tasting item |
+| `POST` | `/:code/items` | Admin | Add a tasting item (appended to the running order) |
+| `PUT` | `/:code/items/order` | Admin | Set the running order: `{ "itemIds": [...] }`, every item exactly once |
 | `PATCH` | `/:code/active-item` | Admin | Set or clear the active item |
 | `PATCH` | `/:code/results` | Admin | Reveal or hide the ranking for everyone |
 
@@ -215,6 +222,21 @@ Host                                    Participants
     podium (🥇🥈🥉) + full ranking
     with collapsible comments
 ```
+
+---
+
+## Frontend Routes
+
+| Route | Who | What |
+|-------|-----|------|
+| `/` | everyone | Create or join an event |
+| `/event/:code` | participants | Rate + comment on the active item |
+| `/admin/:code` | host (JWT) | Items, running order (↑ ↓, *Back / Next*), participants, reveal |
+| `/board/:code` | a screen in the room | Chrome-free: current item + live comments, big QR bottom-right; waiting screen before, ranking after the reveal. Public, read-only. |
+
+*Next* / *Back* are purely client-side: they call `PATCH /:code/active-item`
+with the neighbouring item. With nothing active, *Next* starts the first item
+nobody has rated yet; on the last item it ends the tasting (clears the active item).
 
 ---
 

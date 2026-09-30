@@ -22,9 +22,12 @@ aren't obvious from the code.
 - **backend/** — C# / .NET 10 minimal APIs + EF Core (Npgsql) on PostgreSQL 16.
   Two files: `Program.cs` (every endpoint + auth) and `Data.cs` (entities +
   `DbContext`).
-- The frontend polls `/api/events/:code/status` every 3s. No WebSockets — don't
-  add one without a reason; the polling endpoint is deliberately the single
-  source of live state for both views.
+- The frontend polls `/api/events/:code/status` every 3s via
+  `src/useEventStatus.ts`, shared by both views. No WebSockets — don't add one
+  without a reason; the polling endpoint is deliberately the single source of
+  live state. A failed poll must never become a permanent error screen (it once
+  did — one hiccup on the first request stuck forever): only a `404` is final,
+  everything else shows "reconnecting" and retries on the next tick.
 
 ## Commands
 
@@ -140,6 +143,10 @@ event (reached by code or QR). A bottom tab bar would have nothing to hold.
 `TopNav` is rendered without `tabs`, so the tab row never appears and the
 720px show/hide rule doesn't come into play. If you ever add real routes,
 add the tabs *and* a `MobileNav` — and gate both on `sm`, never `md`.
+
+`/board/:code` (the TV display) sits **outside** the TopNav layout route in
+`App.tsx` on purpose — it is full-bleed, `h-screen overflow-hidden`, and must
+never scroll. Its QR code follows the same white-frame exception as `AdminEvent`.
 
 ## Backend gotchas
 

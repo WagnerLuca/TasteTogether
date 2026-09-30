@@ -1,8 +1,9 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import Home from './pages/Home';
 import AdminEvent from './pages/AdminEvent';
 import ParticipantEvent from './pages/ParticipantEvent';
+import Board from './pages/Board';
 import { TopNav, useTheme, useLocale } from './wl';
 import { TASTING_ACCENT } from './accent';
 import { useT } from './useT';
@@ -33,17 +34,25 @@ export default function App() {
 
   return (
     <BrowserRouter>
-      <div className="flex min-h-screen flex-col">
-        <TopNav accent={TASTING_ACCENT} product={t('brand.product')} />
-        <main className="flex-1">
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/admin/:code" element={<AdminEvent />} />
-            <Route path="/event/:code" element={<ParticipantEvent />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </main>
-      </div>
+      <Routes>
+        {/* The board is for a screen in the room — full-bleed, no TopNav. */}
+        <Route path="/board/:code" element={<Board />} />
+        <Route
+          element={
+            <div className="flex min-h-screen flex-col">
+              <TopNav accent={TASTING_ACCENT} product={t('brand.product')} />
+              <main className="flex-1">
+                <Outlet />
+              </main>
+            </div>
+          }
+        >
+          <Route path="/" element={<Home />} />
+          <Route path="/admin/:code" element={<AdminEvent />} />
+          <Route path="/event/:code" element={<ParticipantEvent />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
     </BrowserRouter>
   );
 }

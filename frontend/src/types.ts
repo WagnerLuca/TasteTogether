@@ -23,6 +23,8 @@ export interface TastingItem {
   id: string;
   name: string;
   price: number;
+  /** Tasting order; `items` in the status response already come sorted by it. */
+  position: number;
   isActive: boolean;
   createdAt: string;
   ratingsCount: number;
@@ -38,6 +40,8 @@ export interface EventStatus {
   activeItem: { id: string; name: string; price: number } | null;
   ratingProgress: { rated: number; total: number };
   items: TastingItem[];
+  /** null when no session token was sent; false when it's unknown (e.g. removed by the host). */
+  sessionRecognized: boolean | null;
   hasRatedActiveItem: boolean;
   myRatingForActiveItem: number | null;
 }

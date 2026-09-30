@@ -31,6 +31,10 @@ export function saveSession(code: string, sessionToken: string, username: string
   localStorage.setItem(`tastetogether_session_${code}`, JSON.stringify({ sessionToken, username }));
 }
 
+export function clearSession(code: string) {
+  localStorage.removeItem(`tastetogether_session_${code}`);
+}
+
 export function hasAdminToken(code: string): boolean {
   return !!getAdminToken(code);
 }
@@ -81,6 +85,10 @@ export async function addTastingItem(code: string, name: string, price: number) 
   return data;
 }
 
+export async function reorderItems(code: string, itemIds: string[]) {
+  await api.put(`/events/${code}/items/order`, { itemIds }, { headers: adminHeaders(code) });
+}
+
 export async function setActiveItem(code: string, itemId: string | null) {
   const { data } = await api.patch(`/events/${code}/active-item`, { itemId }, {
     headers: adminHeaders(code),
@@ -93,6 +101,10 @@ export async function setResultsRevealed(code: string, revealed: boolean) {
     headers: adminHeaders(code),
   });
   return data as { resultsRevealed: boolean };
+}
+
+export async function removeParticipant(code: string, participantId: string) {
+  await api.delete(`/events/${code}/participants/${participantId}`, { headers: adminHeaders(code) });
 }
 
 // Participant actions

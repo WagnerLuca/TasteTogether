@@ -1,26 +1,26 @@
-import { useEffect, useState, useRef, FormEvent } from 'react';
+import { useState, FormEvent } from 'react';
 import { useParams } from 'react-router-dom';
 import QRCode from 'react-qr-code';
 import {
-  getEventStatus,
   addTastingItem,
   setActiveItem,
   setResultsRevealed,
   hasAdminToken,
   adminLogin,
+  removeParticipant,
+  reorderItems,
 } from '../api/client';
-import { EventStatus, TastingItem } from '../types';
+import { Participant, TastingItem } from '../types';
 import StarRating from '../components/StarRating';
 import CommentSection from '../components/CommentSection';
 import ResultsOverview from '../components/ResultsOverview';
 import { Badge, Button, Card, Input, ProgressBar } from '../wl';
 import { TASTING_ACCENT, accentVar } from '../accent';
 import { useT } from '../useT';
-
-const POLL_INTERVAL = 3000;
+import { useEventStatus } from '../useEventStatus';
 
 export default function AdminEvent() {
-  const { code } = useParams<{ code: string }>();
+  const code = useParams<{ code: string }>().code?.toUpperCase();
   const { t, tp, formatPrice, formatScore } = useT();
 
   const [authed, setAuthed] = useState(() => !!code && hasAdminToken(code));
@@ -28,8 +28,7 @@ export default function AdminEvent() {
   const [loggingIn, setLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
 
-  const [status, setStatus] = useState<EventStatus | null>(null);
-  const [error, setError] = useState('');
+  const { status, notFound, connectionLost, refresh } = useEventStatus(code, authed);
 
   const [itemName, setItemName] = useState('');
   const [itemPrice, setItemPrice] = useState('');
@@ -39,18 +38,10 @@ export default function AdminEvent() {
   const [activating, setActivating] = useState<string | null>(null);
   const [togglingResults, setTogglingResults] = useState(false);
   const [copied, setCopied] = useState<'code' | 'link' | null>(null);
-
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    if (!code || !authed) return;
-    fetchStatus();
-    pollRef.current = setInterval(fetchStatus, POLL_INTERVAL);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code, authed]);
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [stepping, setStepping] = useState(false);
+  const [reordering, setReordering] = useState(false);
+  const [removeError, setRemoveError] = useState('');
 
   async function handleLogin(e: FormEvent) {
     e.preventDefault();
@@ -68,16 +59,6 @@ export default function AdminEvent() {
     }
   }
 
-  async function fetchStatus() {
-    if (!code) return;
-    try {
-      const data = await getEventStatus(code);
-      setStatus(data);
-    } catch {
-      setError(t('admin.statusError'));
-    }
-  }
-
   async function handleAddItem(e: FormEvent) {
     e.preventDefault();
     if (!code || !itemName.trim()) return;
@@ -92,7 +73,7 @@ export default function AdminEvent() {
       await addTastingItem(code, itemName.trim(), price);
       setItemName('');
       setItemPrice('');
-      await fetchStatus();
+      await refresh();
     } catch {
       setAddItemError(t('admin.addError'));
     } finally {
@@ -105,7 +86,7 @@ export default function AdminEvent() {
     setActivating(item.id);
     try {
       await setActiveItem(code, item.isActive ? null : item.id);
-      await fetchStatus();
+      await refresh();
     } finally {
       setActivating(null);
     }
@@ -116,9 +97,47 @@ export default function AdminEvent() {
     setTogglingResults(true);
     try {
       await setResultsRevealed(code, revealed);
-      await fetchStatus();
+      await refresh();
     } finally {
       setTogglingResults(false);
+    }
+  }
+
+  async function goTo(itemId: string | null) {
+    if (!code) return;
+    setStepping(true);
+    try {
+      await setActiveItem(code, itemId);
+      await refresh();
+    } finally {
+      setStepping(false);
+    }
+  }
+
+  async function handleMove(index: number, dir: -1 | 1) {
+    if (!code || !status) return;
+    const ids = status.items.map((i) => i.id);
+    [ids[index], ids[index + dir]] = [ids[index + dir], ids[index]];
+    setReordering(true);
+    try {
+      await reorderItems(code, ids);
+      await refresh();
+    } finally {
+      setReordering(false);
+    }
+  }
+
+  async function handleRemove(p: Participant) {
+    if (!code || !window.confirm(t('admin.removeConfirm', { name: p.username }))) return;
+    setRemoving(p.id);
+    setRemoveError('');
+    try {
+      await removeParticipant(code, p.id);
+      await refresh();
+    } catch {
+      setRemoveError(t('admin.removeError'));
+    } finally {
+      setRemoving(null);
     }
   }
 
@@ -167,17 +186,19 @@ export default function AdminEvent() {
       </div>
     );
 
-  if (error)
+  if (notFound)
     return (
       <div className="flex min-h-[60vh] items-center justify-center p-4">
-        <p className="text-danger-strong">{error}</p>
+        <p className="text-danger-strong">{t('admin.notFound')}</p>
       </div>
     );
 
   if (!status)
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <p className="animate-pulse text-ink-muted">{t('common.loading')}</p>
+        <p className="animate-pulse text-ink-muted">
+          {connectionLost ? t('common.reconnecting') : t('common.loading')}
+        </p>
       </div>
     );
 
@@ -189,8 +210,23 @@ export default function AdminEvent() {
   const progressPct =
     ratingProgress.total > 0 ? (ratingProgress.rated / ratingProgress.total) * 100 : 0;
 
+  // Running order: items come sorted by position. With nothing active, "next" is the
+  // first item nobody has rated yet — so it resumes where a paused tasting left off.
+  const activeIdx = items.findIndex((i) => i.isActive);
+  const prevItem = activeIdx > 0 ? items[activeIdx - 1] : null;
+  const nextItem =
+    activeIdx >= 0
+      ? (items[activeIdx + 1] ?? null)
+      : (items.find((i) => i.ratingsCount === 0) ?? items[0] ?? null);
+  const nothingTastedYet = items.every((i) => i.ratingsCount === 0);
+
   return (
     <div className="mx-auto w-full max-w-2xl space-y-5 px-4 py-8 pb-12">
+      {connectionLost && (
+        <p role="status" className="text-center text-sm text-danger-strong">
+          {t('common.reconnecting')}
+        </p>
+      )}
       {/* Header / share card */}
       <Card>
         <Badge accent={TASTING_ACCENT}>{t('admin.eyebrow')}</Badge>
@@ -228,6 +264,16 @@ export default function AdminEvent() {
               </div>
             </div>
             <p className="text-xs text-ink-muted">{t('admin.shareHint')}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => window.open(`/board/${event.code}`, '_blank', 'noopener')}
+              >
+                {t('admin.openBoard')} ↗
+              </Button>
+              <span className="text-xs text-ink-muted">{t('admin.boardHint')}</span>
+            </div>
           </div>
         </div>
       </Card>
@@ -245,14 +291,65 @@ export default function AdminEvent() {
             {participants.map((p) => (
               <span
                 key={p.id}
-                className="rounded-full bg-bg-alt px-3 py-1 text-sm text-ink"
+                className="inline-flex items-center gap-1 rounded-full bg-bg-alt py-1 pl-3 pr-1 text-sm text-ink"
               >
                 {p.username}
+                <button
+                  type="button"
+                  onClick={() => handleRemove(p)}
+                  disabled={removing === p.id}
+                  aria-label={t('admin.removeParticipant', { name: p.username })}
+                  title={t('admin.removeParticipant', { name: p.username })}
+                  className="flex h-5 w-5 items-center justify-center rounded-full leading-none text-ink-muted transition-colors hover:bg-border hover:text-danger-strong disabled:opacity-50"
+                >
+                  ×
+                </button>
               </span>
             ))}
           </div>
         )}
+        {removeError && <p className="mt-2 text-xs text-danger-strong">{removeError}</p>}
       </Card>
+
+      {/* Running order: step through the pre-defined sequence */}
+      {items.length > 0 && (
+        <Card>
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 className="font-semibold text-ink">{t('admin.flowTitle')}</h2>
+            {activeIdx >= 0 && (
+              <span className="text-sm text-ink-muted">
+                {t('board.itemOf', { n: activeIdx + 1, total: items.length })}
+              </span>
+            )}
+          </div>
+          {activeIdx < 0 && <p className="mt-1 text-sm text-ink-muted">{t('admin.flowIdle')}</p>}
+          <div className="mt-4 flex gap-2">
+            <Button
+              variant="ghost"
+              className="flex-1"
+              disabled={!prevItem || stepping}
+              onClick={() => prevItem && goTo(prevItem.id)}
+            >
+              ← {t('admin.back')}
+            </Button>
+            <Button
+              variant="accent"
+              accent={TASTING_ACCENT}
+              className="flex-1"
+              disabled={stepping || (activeIdx < 0 && !nextItem)}
+              onClick={() => goTo(nextItem?.id ?? null)}
+            >
+              {activeIdx < 0
+                ? nothingTastedYet
+                  ? t('admin.start')
+                  : t('admin.resume', { name: nextItem?.name ?? '' })
+                : nextItem
+                  ? `${t('admin.next')} →`
+                  : t('admin.finish')}
+            </Button>
+          </div>
+        </Card>
+      )}
 
       {/* Active item */}
       {activeItem && activeItemData && (
@@ -337,7 +434,7 @@ export default function AdminEvent() {
         <Card>
           <h2 className="mb-4 font-semibold text-ink">{t('admin.items')}</h2>
           <div className="space-y-3">
-            {items.map((item) => (
+            {items.map((item, index) => (
               <div
                 key={item.id}
                 className="rounded-card border p-3 transition-colors"
@@ -348,6 +445,9 @@ export default function AdminEvent() {
                 }
               >
                 <div className="flex items-center gap-3">
+                  <span className="w-5 shrink-0 text-center text-sm font-semibold text-ink-muted">
+                    {index + 1}
+                  </span>
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium text-ink">{item.name}</div>
                     <div className="flex flex-wrap items-center gap-3 text-sm text-ink-muted">
@@ -361,6 +461,21 @@ export default function AdminEvent() {
                         <span>💬 {tp('admin.commentCount', item.comments.length)}</span>
                       )}
                     </div>
+                  </div>
+                  <div className="flex shrink-0 flex-col">
+                    {([-1, 1] as const).map((dir) => (
+                      <button
+                        key={dir}
+                        type="button"
+                        onClick={() => handleMove(index, dir)}
+                        disabled={reordering || !items[index + dir]}
+                        aria-label={t(dir < 0 ? 'admin.moveUp' : 'admin.moveDown', { name: item.name })}
+                        title={t(dir < 0 ? 'admin.moveUp' : 'admin.moveDown', { name: item.name })}
+                        className="rounded px-1.5 text-xs leading-5 text-ink-muted transition-colors hover:bg-border hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
+                      >
+                        {dir < 0 ? '▲' : '▼'}
+                      </button>
+                    ))}
                   </div>
                   <Button
                     size="sm"

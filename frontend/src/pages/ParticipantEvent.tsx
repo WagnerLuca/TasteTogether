@@ -1,14 +1,13 @@
-import { useEffect, useState, useRef, FormEvent } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  getEventStatus,
+  clearSession,
   joinEvent,
   rateItem,
   postComment,
   saveSession,
   getStoredUsername,
 } from '../api/client';
-import { EventStatus } from '../types';
 import StarRating from '../components/StarRating';
 import RatingInput from '../components/RatingInput';
 import CommentSection from '../components/CommentSection';
@@ -16,17 +15,16 @@ import ResultsOverview from '../components/ResultsOverview';
 import { Button, Card, Input, LogoMark } from '../wl';
 import { TASTING_ACCENT, accentVar } from '../accent';
 import { useT } from '../useT';
-
-const POLL_INTERVAL = 3000;
+import { useEventStatus } from '../useEventStatus';
 
 export default function ParticipantEvent() {
-  const { code } = useParams<{ code: string }>();
+  const code = useParams<{ code: string }>().code?.toUpperCase();
   const navigate = useNavigate();
   const { t, tp, formatPrice, formatScore } = useT();
 
-  const [status, setStatus] = useState<EventStatus | null>(null);
-  const [username, setUsername] = useState<string | null>(null);
-  const [error, setError] = useState('');
+  const { status, notFound, connectionLost, refresh } = useEventStatus(code);
+  const [username, setUsername] = useState(() => (code ? getStoredUsername(code) : null));
+  const [removed, setRemoved] = useState(false);
 
   const [joinName, setJoinName] = useState('');
   const [joining, setJoining] = useState(false);
@@ -36,36 +34,20 @@ export default function ParticipantEvent() {
   const [submittingRating, setSubmittingRating] = useState(false);
   const [ratingError, setRatingError] = useState('');
 
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
+  // The host removed us: our stored session is dead, so drop it and show the join form.
   useEffect(() => {
-    if (!code) {
-      navigate('/');
-      return;
+    if (code && status?.sessionRecognized === false) {
+      clearSession(code);
+      setUsername(null);
+      setRemoved(true);
     }
-    setUsername(getStoredUsername(code));
-    fetchStatus();
-    pollRef.current = setInterval(fetchStatus, POLL_INTERVAL);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [code]);
+  }, [code, status?.sessionRecognized]);
 
   useEffect(() => {
     setSelectedScore(status?.myRatingForActiveItem ?? 0);
     setRatingError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status?.activeItem?.id]);
-
-  async function fetchStatus() {
-    if (!code) return;
-    try {
-      setStatus(await getEventStatus(code));
-    } catch {
-      setError(t('event.loadError'));
-    }
-  }
 
   async function handleJoin(e: FormEvent) {
     e.preventDefault();
@@ -76,7 +58,8 @@ export default function ParticipantEvent() {
       const { sessionToken } = await joinEvent(code, joinName.trim());
       saveSession(code, sessionToken, joinName.trim());
       setUsername(joinName.trim());
-      await fetchStatus();
+      setRemoved(false);
+      await refresh();
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
       setJoinError(msg ?? t('home.joinError'));
@@ -92,7 +75,7 @@ export default function ParticipantEvent() {
     setRatingError('');
     try {
       await rateItem(code, status.activeItem.id, selectedScore);
-      await fetchStatus();
+      await refresh();
     } catch {
       setRatingError(t('event.rateError'));
     } finally {
@@ -103,13 +86,13 @@ export default function ParticipantEvent() {
   async function handleComment(text: string) {
     if (!code || !status?.activeItem) return;
     await postComment(code, status.activeItem.id, text);
-    await fetchStatus();
+    await refresh();
   }
 
-  if (error)
+  if (notFound)
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-4">
-        <p className="text-center text-danger-strong">{error}</p>
+        <p className="text-center text-danger-strong">{t('event.loadError')}</p>
         <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
           {t('common.goHome')}
         </Button>
@@ -119,7 +102,9 @@ export default function ParticipantEvent() {
   if (!status)
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
-        <p className="animate-pulse text-ink-muted">{t('common.loading')}</p>
+        <p className="animate-pulse text-ink-muted">
+          {connectionLost ? t('common.reconnecting') : t('common.loading')}
+        </p>
       </div>
     );
 
@@ -137,6 +122,11 @@ export default function ParticipantEvent() {
             <h1 className="text-xl font-bold text-ink">{status.event.name}</h1>
             <p className="mt-1 text-sm text-ink-muted">{t('event.joinPrompt')}</p>
           </div>
+          {removed && (
+            <p role="status" className="mb-4 text-center text-sm text-danger-strong">
+              {t('event.removed')}
+            </p>
+          )}
           <form onSubmit={handleJoin} className="space-y-3">
             <Input
               type="text"
@@ -177,6 +167,11 @@ export default function ParticipantEvent() {
 
   return (
     <div className="mx-auto w-full max-w-lg space-y-5 px-4 py-8 pb-12">
+      {connectionLost && (
+        <p role="status" className="text-center text-sm text-danger-strong">
+          {t('common.reconnecting')}
+        </p>
+      )}
       {/* Header */}
       <Card padded={false} className="p-5">
         <h1 className="text-xl font-bold text-ink">{event.name}</h1>

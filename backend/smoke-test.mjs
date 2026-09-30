@@ -58,6 +58,7 @@ assert.equal(comment.username, 'Anna');
 
 let s = await expect(200, 'status as participant', 'GET', `/${code}/status?sessionToken=${sessionToken}`);
 assert.equal(s.hasRatedActiveItem, true);
+assert.equal(s.sessionRecognized, true);
 assert.equal(s.myRatingForActiveItem, 7.5);
 assert.deepEqual(s.ratingProgress, { rated: 1, total: 2 });
 assert.equal(s.items[0].avgScore, 7.5);
@@ -68,6 +69,33 @@ assert.ok(s.event.createdAt.endsWith('Z'), 'timestamps are UTC');
 
 s = await expect(200, 'status as admin', 'GET', `/${code}/status`, undefined, admin);
 assert.deepEqual(s.items[0].ratings, [{ username: 'Anna', score: 7.5 }]);
+
+assert.equal(s.sessionRecognized, null, 'no session sent');
+
+// Removing a participant: host only, drops their rating, invalidates their session.
+const ben = (await req('GET', `/${code}/status`, undefined, admin)).data.participants.find((p) => p.username === 'Ben');
+const annaId = s.participants.find((p) => p.username === 'Anna').id;
+await expect(401, 'remove without token', 'DELETE', `/${code}/participants/${ben.id}`);
+await expect(403, 'remove with foreign token', 'DELETE', `/${other}/participants/${ben.id}`, undefined, admin);
+await expect(404, 'remove unknown', 'DELETE', `/${code}/participants/nope`, undefined, admin);
+await expect(204, 'remove Anna', 'DELETE', `/${code}/participants/${annaId}`, undefined, admin);
+s = await expect(200, 'status after removal', 'GET', `/${code}/status?sessionToken=${sessionToken}`);
+assert.equal(s.sessionRecognized, false, 'removed participant is told');
+assert.deepEqual(s.participants.map((p) => p.username), ['Ben']);
+assert.equal(s.items[0].ratingsCount, 0, 'their rating is gone');
+assert.equal(s.items[0].comments.length, 0, 'their comments are gone');
+await expect(401, 'removed participant cannot rate', 'POST', `/${code}/items/${item}/rate`, { score: 5 }, anna);
+await expect(201, 'rejoin under the same name', 'POST', `/${code}/join`, { username: 'Anna' });
+
+// Tasting order: new items append; the host can reorder the whole list.
+const second = (await expect(201, 'add 2nd item', 'POST', `/${code}/items`, { name: 'Silvaner', price: 9 }, admin)).id;
+assert.equal((await req('GET', `/${code}/status`)).data.items.map((i) => i.id).join(), [item, second].join());
+await expect(400, 'order missing an item', 'PUT', `/${code}/items/order`, { itemIds: [second] }, admin);
+await expect(400, 'order with duplicate', 'PUT', `/${code}/items/order`, { itemIds: [second, second] }, admin);
+await expect(401, 'order without token', 'PUT', `/${code}/items/order`, { itemIds: [second, item] });
+await expect(204, 'reorder', 'PUT', `/${code}/items/order`, { itemIds: [second, item] }, admin);
+s = (await req('GET', `/${code}/status`)).data;
+assert.deepEqual(s.items.map((i) => [i.id, i.position]), [[second, 0], [item, 1]]);
 
 await expect(200, 'reveal', 'PATCH', `/${code}/results`, { revealed: true }, admin);
 s = await expect(200, 'status after reveal', 'GET', `/${code}/status`);

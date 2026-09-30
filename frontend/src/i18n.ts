@@ -37,6 +37,10 @@ export const messages = {
     goHome: { de: 'Zur Startseite', en: 'Go home' } as Message,
     saving: { de: 'Wird gespeichert…', en: 'Saving…' } as Message,
     notRated: { de: 'nicht bewertet', en: 'not rated' } as Message,
+    reconnecting: {
+      de: 'Verbindung unterbrochen — neuer Versuch läuft…',
+      en: 'Connection lost — retrying…',
+    } as Message,
   },
 
   home: {
@@ -135,9 +139,35 @@ export const messages = {
     } as Message,
     reveal: { de: 'Für alle aufdecken', en: 'Reveal to everyone' } as Message,
     hideResults: { de: 'Wieder verbergen', en: 'Hide from participants' } as Message,
-    statusError: {
-      de: 'Status der Verkostung konnte nicht geladen werden.',
-      en: 'Could not load event status.',
+    notFound: {
+      de: 'Diese Verkostung gibt es nicht.',
+      en: 'This event does not exist.',
+    } as Message,
+    openBoard: { de: 'Board öffnen', en: 'Open board' } as Message,
+    boardHint: {
+      de: 'Für einen Bildschirm im Raum: aktuelle Probe, Kommentare und QR-Code.',
+      en: 'For a screen in the room: current item, comments and QR code.',
+    } as Message,
+    flowTitle: { de: 'Ablauf', en: 'Running order' } as Message,
+    flowIdle: {
+      de: 'Keine Probe aktiv. Die Reihenfolge legst du unten mit ↑ ↓ fest.',
+      en: 'No item active. Set the order below with ↑ ↓.',
+    } as Message,
+    start: { de: 'Erste Probe starten', en: 'Start first item' } as Message,
+    resume: { de: 'Weiter mit {name}', en: 'Continue with {name}' } as Message,
+    next: { de: 'Weiter', en: 'Next' } as Message,
+    back: { de: 'Zurück', en: 'Back' } as Message,
+    finish: { de: 'Verkostung beenden', en: 'End tasting' } as Message,
+    moveUp: { de: '{name} nach oben', en: 'Move {name} up' } as Message,
+    moveDown: { de: '{name} nach unten', en: 'Move {name} down' } as Message,
+    removeParticipant: { de: '{name} entfernen', en: 'Remove {name}' } as Message,
+    removeConfirm: {
+      de: '{name} entfernen? Bewertungen und Kommentare dieser Person werden gelöscht.',
+      en: 'Remove {name}? Their ratings and comments will be deleted.',
+    } as Message,
+    removeError: {
+      de: 'Teilnehmer konnte nicht entfernt werden.',
+      en: 'Could not remove participant.',
     } as Message,
   },
 
@@ -146,8 +176,12 @@ export const messages = {
     joinCta: { de: 'Verkostung beitreten', en: 'Join tasting' } as Message,
     greeting: { de: 'Hallo,', en: 'Hi,' } as Message,
     loadError: {
-      de: 'Verkostung konnte nicht geladen werden. Der Code ist möglicherweise ungültig.',
-      en: 'Could not load event. The code may be invalid.',
+      de: 'Verkostung nicht gefunden. Der Code ist möglicherweise ungültig.',
+      en: 'Event not found. The code may be invalid.',
+    } as Message,
+    removed: {
+      de: 'Der Gastgeber hat dich aus der Verkostung entfernt. Du kannst erneut beitreten.',
+      en: 'The host removed you from this tasting. You can join again.',
     } as Message,
     waiting: {
       de: 'Warten, bis der Gastgeber die nächste Probe startet…',
@@ -172,6 +206,15 @@ export const messages = {
     sliderLabel: { de: 'Bewertungsschieber', en: 'Rating slider' } as Message,
     ariaValue: { de: 'Bewertung {value} von {max}', en: 'Rating {value} of {max}' } as Message,
     ariaSet: { de: 'Mit {value} von {max} bewerten', en: 'Rate {value} of {max}' } as Message,
+  },
+
+  board: {
+    itemOf: { de: 'Probe {n} von {total}', en: 'Item {n} of {total}' } as Message,
+    waiting: { de: 'Gleich geht’s los …', en: 'Starting soon …' } as Message,
+    scanToJoin: {
+      de: 'QR-Code scannen oder Code eingeben, um mitzumachen.',
+      en: 'Scan the QR code or enter the code to join.',
+    } as Message,
   },
 
   comments: {
