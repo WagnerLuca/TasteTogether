@@ -1,4 +1,4 @@
-node_modules
-dist
-.env
+bin
+obj
+appsettings.Development.json
 *.log

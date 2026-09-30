@@ -1,14 +1,35 @@
+/* The design system's colour tokens — every Tailwind colour in the shared
+   preset resolves to one of these CSS variables, defined twice (:root and
+   .dark). This import must come first so the variables exist before use. */
+@import '@wagnerluca/ui/tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* Mirrors @wagnerluca/ui's own src/styles/main.css so this app's baseline
+   typography and surfaces match the rest of the ecosystem. */
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
-    @apply bg-stone-50 text-stone-800 antialiased;
+    @apply bg-bg text-ink font-body antialiased;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display tracking-tight;
   }
 }
 
-/* Touch-friendly rating slider */
+/* Touch-friendly rating slider. The track gradient is set inline by
+   RatingInput (it depends on the current value); everything else is themed
+   from tokens here, so the thumb follows light/dark and the module accent. */
 .rating-slider {
   -webkit-appearance: none;
   appearance: none;
@@ -25,9 +46,9 @@
   height: 1.875rem;
   width: 1.875rem;
   border-radius: 9999px;
-  background: #be123c; /* rose-700 */
-  border: 3px solid #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  background: var(--accent-berry);
+  border: 3px solid var(--color-surface);
+  box-shadow: var(--shadow);
   cursor: pointer;
   transition: transform 0.1s;
 }
@@ -40,8 +61,13 @@
   height: 1.875rem;
   width: 1.875rem;
   border-radius: 9999px;
-  background: #be123c;
-  border: 3px solid #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  background: var(--accent-berry);
+  border: 3px solid var(--color-surface);
+  box-shadow: var(--shadow);
   cursor: pointer;
+}
+
+.rating-slider:focus-visible {
+  outline: 2px solid var(--accent-berry);
+  outline-offset: 4px;
 }

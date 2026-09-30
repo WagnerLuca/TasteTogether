@@ -2,6 +2,9 @@ import { useState } from 'react';
 import { TastingItem } from '../types';
 import StarRating from './StarRating';
 import CommentSection from './CommentSection';
+import { Card } from '../wl';
+import { accentVar } from '../accent';
+import { useT } from '../useT';
 
 const MEDALS = ['🥇', '🥈', '🥉'];
 
@@ -21,51 +24,57 @@ function rankItems(items: TastingItem[]): TastingItem[] {
 }
 
 function RankingRow({ item, rank }: { item: TastingItem; rank: number }) {
+  const { t, tp, formatPrice } = useT();
   const [open, setOpen] = useState(false);
   const medal = rank <= 3 ? MEDALS[rank - 1] : null;
 
   return (
-    <div className="bg-white rounded-xl border border-stone-200 overflow-hidden">
+    <div className="overflow-hidden rounded-card border border-border bg-surface">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center gap-3 p-4 text-left hover:bg-stone-50 transition-colors"
+        className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-bg-alt"
       >
-        <div className="shrink-0 w-10 text-center">
+        <div className="w-10 shrink-0 text-center">
           {medal ? (
             <span className="text-2xl">{medal}</span>
           ) : (
-            <span className="text-lg font-bold text-stone-400">#{rank}</span>
+            <span className="text-lg font-bold text-ink-muted">#{rank}</span>
           )}
         </div>
 
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-stone-800 truncate">{item.name}</div>
-          <div className="text-sm text-stone-400">€{item.price.toFixed(2)}</div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-semibold text-ink">{item.name}</div>
+          <div className="text-sm text-ink-muted">{formatPrice(item.price)}</div>
         </div>
 
         <div className="shrink-0 text-right">
           {item.avgScore !== null ? (
             <>
               <StarRating value={item.avgScore} size="sm" disabled />
-              <div className="text-xs text-stone-400 mt-0.5">
-                {item.ratingsCount} rating{item.ratingsCount !== 1 ? 's' : ''}
+              <div className="mt-0.5 text-xs text-ink-muted">
+                {tp('results.ratingCount', item.ratingsCount)}
               </div>
             </>
           ) : (
-            <span className="text-xs text-stone-400 italic">not rated</span>
+            <span className="text-xs italic text-ink-muted">{t('common.notRated')}</span>
           )}
         </div>
 
-        <span className={`shrink-0 text-stone-400 transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+        <span
+          className={`shrink-0 text-ink-muted transition-transform ${open ? 'rotate-180' : ''}`}
+          aria-hidden="true"
+        >
+          ▾
+        </span>
       </button>
 
       {open && (
-        <div className="px-4 pb-4 pt-1 border-t border-stone-100">
+        <div className="border-t border-border px-4 pb-4 pt-3">
           {item.comments.length > 0 ? (
             <CommentSection comments={item.comments} canComment={false} />
           ) : (
-            <p className="text-stone-400 text-sm italic py-2">No comments for this item.</p>
+            <p className="py-2 text-sm italic text-ink-muted">{t('comments.noneForItem')}</p>
           )}
         </div>
       )}
@@ -74,14 +83,13 @@ function RankingRow({ item, rank }: { item: TastingItem; rank: number }) {
 }
 
 export default function ResultsOverview({ items }: Props) {
+  const { t, formatScore } = useT();
   const ranked = rankItems(items);
   const podium = ranked.filter((i) => i.avgScore !== null).slice(0, 3);
 
   if (ranked.length === 0) {
     return (
-      <div className="bg-white rounded-2xl shadow-md p-6 text-center text-stone-400">
-        No tasting items yet.
-      </div>
+      <Card className="text-center text-sm text-ink-muted">{t('results.noItems')}</Card>
     );
   }
 
@@ -96,25 +104,29 @@ export default function ResultsOverview({ items }: Props) {
     <div className="space-y-6">
       {/* Podium */}
       {podium.length > 0 && (
-        <div className="bg-gradient-to-b from-amber-50 to-white rounded-2xl shadow-md p-6">
-          <h2 className="text-center text-lg font-bold text-stone-800 mb-6">🏆 Results</h2>
+        <Card>
+          <h2 className="mb-6 text-center text-lg font-bold text-ink">🏆 {t('results.title')}</h2>
           <div className="flex items-end justify-center gap-3">
             {podiumOrder.map((item) => {
               const rank = podium.indexOf(item) + 1;
               return (
-                <div key={item.id} className="flex-1 max-w-[10rem] flex flex-col items-center">
-                  <div className="text-3xl mb-1">{MEDALS[rank - 1]}</div>
-                  <div className="text-sm font-semibold text-stone-800 text-center truncate w-full px-1">
+                <div key={item.id} className="flex max-w-[10rem] flex-1 flex-col items-center">
+                  <div className="mb-1 text-3xl">{MEDALS[rank - 1]}</div>
+                  <div className="w-full truncate px-1 text-center text-sm font-semibold text-ink">
                     {item.name}
                   </div>
-                  <div className="text-amber-600 font-bold text-sm mb-2">
-                    {item.avgScore?.toFixed(1)}
-                    <span className="text-stone-400 font-normal">/10</span>
+                  <div className="mb-2 text-sm font-bold" style={{ color: accentVar('strong') }}>
+                    {formatScore(item.avgScore ?? 0)}
+                    <span className="font-normal text-ink-muted">/10</span>
                   </div>
+                  {/* The block itself carries the accent; taller = better rank. */}
                   <div
-                    className={`w-full rounded-t-lg bg-gradient-to-b from-amber-300 to-amber-400 flex items-start justify-center pt-1 text-white font-black ${heights.get(
+                    className={`flex w-full items-start justify-center rounded-t-btn pt-1 font-black text-on-accent ${heights.get(
                       item.id
                     )}`}
+                    style={{
+                      background: `linear-gradient(to bottom, ${accentVar()}, ${accentVar('strong')})`,
+                    }}
                   >
                     {rank}
                   </div>
@@ -122,12 +134,14 @@ export default function ResultsOverview({ items }: Props) {
               );
             })}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Full ranking — every entry, expandable for comments */}
       <div className="space-y-2">
-        <h3 className="font-semibold text-stone-600 px-1">Full Ranking</h3>
+        <h3 className="px-1 text-sm font-semibold uppercase tracking-wider text-ink-muted">
+          {t('results.fullRanking')}
+        </h3>
         {ranked.map((item, idx) => (
           <RankingRow key={item.id} item={item} rank={idx + 1} />
         ))}

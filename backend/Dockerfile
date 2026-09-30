@@ -1,36 +1,15 @@
-FROM node:20-alpine AS builder
-
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS builder
 WORKDIR /app
+COPY *.csproj ./
+RUN dotnet restore
+COPY . ./
+RUN dotnet publish -c Release -o out --no-restore
 
-# openssl is required by the Prisma schema engine during generate
-RUN apk add --no-cache openssl
-
-# Copy manifests and schema first so npm ci layer is cached independently
-COPY package*.json ./
-COPY prisma ./prisma/
-# postinstall runs `prisma generate` automatically
-RUN npm ci
-
-COPY . .
-RUN npm run build
-
-
-FROM node:20-alpine
-
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
-
-# openssl is required by the Prisma query engine at runtime (Alpine uses musl + openssl-3)
-RUN apk add --no-cache openssl
-
-COPY package*.json ./
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/prisma ./prisma
-COPY entrypoint.sh ./entrypoint.sh
-
-# Normalize line endings — entrypoint.sh may be CRLF on Windows checkouts
-RUN sed -i 's/\r//' entrypoint.sh && chmod +x entrypoint.sh
-
+COPY --from=builder /app/out .
+USER app
+# 3001 is what the frontend's nginx.conf proxies /api/ to.
+ENV ASPNETCORE_HTTP_PORTS=3001
 EXPOSE 3001
-
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["dotnet", "TasteTogether.Api.dll"]

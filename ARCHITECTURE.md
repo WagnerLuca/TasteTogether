@@ -7,9 +7,9 @@ A real-time collaborative tasting platform where groups can rate and comment on 
 ## System Overview
 
 ```
-┌─────────────┐     HTTP/REST      ┌─────────────────┐     Prisma ORM    ┌──────────────┐
+┌─────────────┐     HTTP/REST      ┌─────────────────┐      EF Core      ┌──────────────┐
 │   Browser   │ ──────────────────▶│    Backend API   │ ─────────────────▶│  PostgreSQL  │
-│  (React SPA)│ ◀──────────────────│  (Express + TS)  │                   │              │
+│  (React SPA)│ ◀──────────────────│ (ASP.NET Core 10)│                   │              │
 └─────────────┘   JSON responses   └─────────────────┘                   └──────────────┘
        │
        │  (static files served by Nginx)
@@ -26,14 +26,51 @@ The frontend polls `/api/events/:code/status` every 3 seconds for live updates (
 
 ## Tech Stack
 
-| Layer      | Technology                                     |
-|------------|------------------------------------------------|
-| Frontend   | React 18, TypeScript, Vite, Tailwind CSS       |
-| Backend    | Node.js, Express, TypeScript                   |
-| ORM        | Prisma 5                                       |
-| Database   | PostgreSQL 16                                  |
-| Container  | Docker, Docker Compose                         |
-| CI/CD      | GitHub Actions → GitHub Container Registry     |
+| Layer      | Technology                                                  |
+|------------|-------------------------------------------------------------|
+| Frontend   | React 18, TypeScript, Vite, Tailwind v3                     |
+| Design     | `@wagnerluca/ui` — shared design tokens + Tailwind preset    |
+| Backend    | C# / .NET 10, ASP.NET Core minimal APIs, JWT bearer auth    |
+| ORM        | EF Core 10 (Npgsql)                                         |
+| Database   | PostgreSQL 16                                               |
+| Container  | Docker, Docker Compose                                      |
+| CI/CD      | GitHub Actions → GitHub Container Registry                  |
+
+---
+
+## Design System & i18n
+
+TasteTogether is a module of the Wagner Luca ecosystem and renders in its shared
+Corporate Identity, using the reserved **`berry`** accent (Altrosa / Dusty Rose).
+
+`@wagnerluca/ui` is a **Vue** package, so a React app can only consume its
+framework-agnostic half — and does, as a real dependency from GitHub Packages:
+
+- `@wagnerluca/ui/tokens.css` — the `:root` / `.dark` CSS custom properties,
+  imported at the top of `src/index.css`;
+- `@wagnerluca/ui/tailwind-preset` — palette, the 720px breakpoint model, the
+  display/body/mono faces and the card/btn radii, applied in `tailwind.config.js`.
+
+The Vue components (`TopNav`, `BaseButton`, …) can't be imported, so React
+equivalents live in **`frontend/src/wl/`** — same markup and class names as the
+originals, no colour values of their own. See `frontend/src/wl/README.md` for the
+sync table and the two rules that fail silently if broken (accents via CSS
+variables; nav switches at `sm`/720px).
+
+Dark mode is a single `.dark` class on `<html>`, applied pre-paint by an inline
+script in `index.html` and owned thereafter by `src/wl/useTheme.ts`.
+
+**Localization** is German/English, client-side, no URL prefix and no i18n
+framework — the same pattern the portfolio and the arcade use:
+
+- `src/wl/useLocale.ts` holds the shared, persisted locale (`wl-locale`);
+- `src/i18n.ts` is this app's own copy (`{ section: { field: { de, en } } }`),
+  read through `useT()` → `t('home.create')`, with `tp()` for counted strings;
+- `useT()` also exposes `formatPrice` / `formatScore` / `formatTime`, because
+  German writes `89,90 €` and `7,5` where English writes `€89.90` and `7.5`.
+
+Theme and locale keys (`wl-theme`, `wl-locale`) are deliberately the ecosystem's,
+so both choices follow a visitor across modules served from one origin.
 
 ---
 
@@ -44,7 +81,7 @@ Event
   id              UUID PK
   name            TEXT
   code            TEXT UNIQUE      ← 6-char share code (e.g. "HK3PQ7")
-  adminToken      TEXT UNIQUE      ← returned only at creation, stored client-side
+  adminPasswordHash TEXT           ← host password (ASP.NET Identity PasswordHasher)
   resultsRevealed BOOLEAN          ← when true, all participants see the ranking
   createdAt       TIMESTAMP
 
@@ -91,17 +128,20 @@ All endpoints are under `/api/events`.
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `POST` | `/` | — | Create a new event |
+| `POST` | `/:code/admin/login` | — | Trade the host password for an admin JWT (10/min per IP) |
 | `GET` | `/:code` | — | Get event metadata |
 | `GET` | `/:code/status` | optional | Live status (polling endpoint) |
 
 `POST /` request:
 ```json
-{ "name": "Wine Night #3" }
+{ "name": "Wine Night #3", "password": "min. 6 chars" }
 ```
-Response includes `adminToken` — **store this, it is never returned again**.
+Response: `{ "event": {…}, "token": "<admin JWT>" }`. The same token comes from
+`POST /:code/admin/login` with `{ "password": "…" }`, so the host can sign in
+again from any device.
 
-`GET /:code/status` accepts optional query params:
-- `?adminToken=…` → includes per-participant rating details
+`GET /:code/status` optionally takes:
+- `Authorization: Bearer <admin JWT>` → includes per-participant rating details
 - `?sessionToken=…` → includes whether the caller has rated the active item
 
 ### Participants
@@ -140,10 +180,14 @@ Comments are scoped to individual tasting items. Each item carries its own `comm
 
 ### Authentication
 
-- **Admin**: `X-Admin-Token: <token>` header
-- **Participant**: `X-Session-Token: <token>` header
+- **Admin**: `Authorization: Bearer <JWT>`. HS256, signed with `Jwt:Secret`,
+  one claim `event: <code>`, valid 24 h. A token for event A gets `403` on event B.
+- **Participant**: `X-Session-Token: <token>` header — a server-generated UUID,
+  no account, no password.
 
-Tokens are stored in `localStorage` under `tastetogether_admin_<code>` and `tastetogether_session_<code>` respectively.
+Both live in `localStorage`: `tastetogether_admin_<code>` (the JWT — the client
+treats an expired one as absent and shows the login card) and
+`tastetogether_session_<code>` (`{ sessionToken, username }`).
 
 ---
 
@@ -152,8 +196,8 @@ Tokens are stored in `localStorage` under `tastetogether_admin_<code>` and `tast
 ```
 Host                                    Participants
 ──────────────────────────────────────────────────────────────────
-1. Create event (enter name)
-   ↓ receives share code + admin token
+1. Create event (name + host password)
+   ↓ receives share code + admin JWT
 2. Share 6-char code (e.g. "HK3PQ7")
                                         3. Go to app, enter code + username
                                            ↓ receives session token
@@ -182,65 +226,96 @@ Three services:
 |---------|-------|------|
 | `postgres` | `postgres:16-alpine` | internal only |
 | `backend` | built from `./backend` | `3001` (internal) |
-| `frontend` | built from `./frontend` | `80` (host) |
+| `frontend` | built from `./frontend` | `8080` (host) |
 
-The frontend Nginx container proxies `/api/*` → `backend:3001`.
+The frontend Nginx container proxies `/api/*` → `backend:3001`, so the app is
+same-origin and needs no CORS. The service **must** stay named `backend` —
+that hostname is baked into the frontend image's `nginx.conf`.
 
 Start:
 ```bash
-docker compose up -d
+export NODE_AUTH_TOKEN=<classic PAT with read:packages>   # see below
+docker compose up --build
 ```
-App available at http://localhost.
+App available at http://localhost:8080 (override with `HTTP_PORT`).
+
+To deploy the pre-built images instead:
+```bash
+cp .env.example .env      # then set POSTGRES_PASSWORD and JWT_SECRET
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### Why the frontend build needs a token
+
+`@wagnerluca/ui` is published to **GitHub Packages**, which requires auth even
+for reads (`frontend/.npmrc`). The token reaches the build as a **BuildKit
+secret** — never an `ARG`/`ENV`, so it stays out of the image layers and out of
+`docker history`. `docker-compose.yml` reads it from the host env of the same
+name; CI injects it from `secrets.GHP_READ_TOKEN`. Forget to export it and the
+install fails with a 401.
 
 ---
 
 ## CI/CD Pipeline
 
-GitHub Actions workflow (`.github/workflows/docker-build.yml`):
-- Triggers on push to `main`/`master` and on pull requests
+GitHub Actions workflow (`.github/workflows/ci-cd.yml`) — the same shape as the
+arcade's:
+- Triggers on push to `main`/`master`, on `v*.*.*` tags, on pull requests, and
+  via `workflow_dispatch`
 - Builds `backend` and `frontend` images in parallel
-- Pushes to **GitHub Container Registry** (`ghcr.io`) on merge to default branch
+- Pushes to **GitHub Container Registry** (`ghcr.io`) on branch/tag pushes;
+  pull requests build only (no login, no push), so a PR still gates the images
+- Tags: `sha-<commit>`, `<version>` on a `v*.*.*` tag, and `latest` on the
+  default branch
 - Uses layer caching (`cache-from/to: type=gha`) for fast rebuilds
+- The frontend job additionally passes `NODE_AUTH_TOKEN` as a BuildKit secret.
+  The default `GITHUB_TOKEN` cannot substitute: it is scoped to *this* repo and
+  cannot read a package owned by the design system.
 
-Image names:
+Image names (lowercase — spelled out in the workflow rather than derived from
+the mixed-case repo name):
 ```
-ghcr.io/<owner>/<repo>-backend:latest
-ghcr.io/<owner>/<repo>-frontend:latest
+ghcr.io/<owner>/tastetogether-backend:latest
+ghcr.io/<owner>/tastetogether-frontend:latest
 ```
 
 ---
 
 ## Local Development
 
-Prerequisites: Node 20+, PostgreSQL running locally (or via Docker).
+Prerequisites: .NET 10 SDK, Node 20+, PostgreSQL running locally (or via Docker).
 
 ```bash
-# Backend
+# Backend — connection string + dev JWT secret are in appsettings.Development.json
 cd backend
-cp .env.example .env          # edit DATABASE_URL
-npm install
-npm run db:migrate            # apply migrations
-npm run dev                   # starts on :3001
+dotnet run                    # starts on :3001, creates the schema on first start
+node smoke-test.mjs           # end-to-end check of every endpoint (needs a running backend)
 
 # Frontend (separate terminal)
 cd frontend
+export NODE_AUTH_TOKEN=<classic PAT with read:packages>   # for @wagnerluca/ui
 npm install
 npm run dev                   # starts on :5173, proxies /api → :3001
 ```
 
-For database migrations during development:
-```bash
-cd backend
-npx prisma migrate dev --name <description>
-```
+There are no migrations: `EnsureCreated` builds the schema on an empty
+database, and the one-off `ALTER`s in `Program.cs` upgrade a database created by
+the old Prisma backend (same table/column names, `adminToken` →
+`adminPasswordHash`; events from that era have no password and can't be
+administered any more). A future schema change needs another idempotent `ALTER`
+there — or EF migrations, once that list gets long.
 
 ---
 
 ## Security Considerations
 
-- Admin and session tokens are UUIDs generated server-side; they are not guessable
-- Admin token is **never returned** after initial event creation
+- Host passwords are hashed (PBKDF2 via ASP.NET Identity's `PasswordHasher`);
+  login is rate-limited to 10 attempts/min per client IP (`X-Real-IP` from nginx)
+- Admin JWTs are scoped to one event and expire after 24 h; rotating
+  `JWT_SECRET` signs every host out
+- Session tokens are server-generated UUIDs — not guessable
 - Usernames must be unique per event (enforced at DB level)
 - Ratings are upserted — participants can update but not double-vote
-- No passwords, no personal data collected beyond username
-- CORS is enabled for development; restrict origins in production
+- No personal data collected beyond username
+- No CORS: the API is only reached same-origin through nginx / the Vite proxy

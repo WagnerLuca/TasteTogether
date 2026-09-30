@@ -1,12 +1,17 @@
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createEvent, getEvent, joinEvent, saveAdminToken, saveSession } from '../api/client';
+import { Button, Card, Input, LogoMark } from '../wl';
+import { TASTING_ACCENT, accentVar } from '../accent';
+import { useT } from '../useT';
 
 export default function Home() {
   const navigate = useNavigate();
+  const { t } = useT();
 
   // Create flow
   const [createName, setCreateName] = useState('');
+  const [createPassword, setCreatePassword] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
 
@@ -20,15 +25,15 @@ export default function Home() {
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
-    if (!createName.trim()) return;
+    if (!createName.trim() || createPassword.length < 6) return;
     setCreating(true);
     setCreateError('');
     try {
-      const { event, adminToken } = await createEvent(createName.trim());
-      saveAdminToken(event.code, adminToken);
+      const { event, token } = await createEvent(createName.trim(), createPassword);
+      saveAdminToken(event.code, token);
       navigate(`/admin/${event.code}`);
     } catch {
-      setCreateError('Failed to create event. Please try again.');
+      setCreateError(t('home.createError'));
     } finally {
       setCreating(false);
     }
@@ -46,7 +51,7 @@ export default function Home() {
       setJoinEvent_(event);
       setJoinCode(code);
     } catch {
-      setJoinError('Event not found. Check the code and try again.');
+      setJoinError(t('home.notFound'));
     } finally {
       setLookingUp(false);
     }
@@ -63,105 +68,131 @@ export default function Home() {
       navigate(`/event/${joinEvent_.code}`);
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
-      setJoinError(msg ?? 'Failed to join. That username may already be taken.');
+      setJoinError(msg ?? t('home.joinError'));
     } finally {
       setJoining(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-stone-50 to-rose-50 flex flex-col items-center justify-center p-4">
-      <header className="text-center mb-10">
-        <div className="text-6xl mb-3">🍷</div>
-        <h1 className="text-4xl font-bold text-rose-800 tracking-tight">TasteTogether</h1>
-        <p className="text-stone-500 mt-2">Collaborative tasting — rate, comment, and enjoy together.</p>
+    <div className="mx-auto flex w-full max-w-3xl flex-col justify-center px-4 py-12 sm:py-16">
+      <header className="mb-10 text-center">
+        <div
+          className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-card text-ink"
+          style={{ backgroundColor: accentVar('soft') }}
+        >
+          <LogoMark size={34} accent={TASTING_ACCENT} />
+        </div>
+        <h1 className="text-3xl font-bold tracking-tight text-ink sm:text-4xl">
+          <span className="text-ink-muted">WL</span> TasteTogether
+        </h1>
+        <p className="mx-auto mt-3 max-w-md text-sm text-ink-muted">{t('brand.tagline')}</p>
       </header>
 
-      <div className="grid md:grid-cols-2 gap-6 w-full max-w-2xl">
-        {/* Create Event */}
-        <div className="bg-white rounded-2xl shadow-md p-6">
-          <h2 className="text-lg font-semibold text-stone-800 mb-4">Host a Tasting</h2>
-          <form onSubmit={handleCreate} className="space-y-3">
-            <input
+      <div className="grid gap-5 sm:grid-cols-2">
+        {/* Create event */}
+        <Card>
+          <h2 className="text-lg font-semibold text-ink">{t('home.hostTitle')}</h2>
+          <p className="mt-1 text-xs text-ink-muted">{t('home.hostHint')}</p>
+          <form onSubmit={handleCreate} className="mt-5 space-y-3">
+            <Input
               type="text"
               value={createName}
               onChange={(e) => setCreateName(e.target.value)}
-              placeholder="Event name (e.g. Wine Night #3)"
+              placeholder={t('home.eventNamePlaceholder')}
               maxLength={80}
               required
-              className="w-full border border-stone-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
             />
-            {createError && <p className="text-red-600 text-xs">{createError}</p>}
-            <button
+            <Input
+              type="password"
+              value={createPassword}
+              onChange={(e) => setCreatePassword(e.target.value)}
+              placeholder={t('home.passwordPlaceholder')}
+              minLength={6}
+              autoComplete="new-password"
+              required
+            />
+            <p className="text-xs text-ink-muted">{t('home.passwordHint')}</p>
+            {createError && <p className="text-xs text-danger-strong">{createError}</p>}
+            <Button
               type="submit"
-              disabled={creating || !createName.trim()}
-              className="w-full bg-rose-700 text-white font-medium py-2.5 rounded-lg hover:bg-rose-800 disabled:opacity-50 transition-colors"
+              variant="accent"
+              accent={TASTING_ACCENT}
+              full
+              disabled={creating || !createName.trim() || createPassword.length < 6}
             >
-              {creating ? 'Creating…' : 'Create Event'}
-            </button>
+              {creating ? t('home.creating') : t('home.create')}
+            </Button>
           </form>
-        </div>
+        </Card>
 
-        {/* Join Event */}
-        <div className="bg-white rounded-2xl shadow-md p-6">
-          <h2 className="text-lg font-semibold text-stone-800 mb-4">Join a Tasting</h2>
+        {/* Join event */}
+        <Card>
+          <h2 className="text-lg font-semibold text-ink">{t('home.joinTitle')}</h2>
+          <p className="mt-1 text-xs text-ink-muted">{t('home.joinHint')}</p>
 
           {!joinEvent_ ? (
-            <form onSubmit={handleLookup} className="space-y-3">
-              <input
+            <form onSubmit={handleLookup} className="mt-5 space-y-3">
+              <Input
                 type="text"
                 value={joinCode}
                 onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                placeholder="Event code (e.g. HK3PQ7)"
+                placeholder={t('home.codePlaceholder')}
                 maxLength={6}
                 required
-                className="w-full border border-stone-300 rounded-lg px-3 py-2.5 text-sm font-mono tracking-widest uppercase focus:outline-none focus:ring-2 focus:ring-rose-300"
+                className="font-mono uppercase tracking-widest"
               />
-              {joinError && <p className="text-red-600 text-xs">{joinError}</p>}
-              <button
-                type="submit"
-                disabled={lookingUp || joinCode.trim().length < 6}
-                className="w-full bg-stone-700 text-white font-medium py-2.5 rounded-lg hover:bg-stone-800 disabled:opacity-50 transition-colors"
-              >
-                {lookingUp ? 'Looking up…' : 'Find Event'}
-              </button>
+              {joinError && <p className="text-xs text-danger-strong">{joinError}</p>}
+              <Button type="submit" full disabled={lookingUp || joinCode.trim().length < 6}>
+                {lookingUp ? t('home.finding') : t('home.find')}
+              </Button>
             </form>
           ) : (
-            <form onSubmit={handleJoin} className="space-y-3">
-              <div className="bg-rose-50 rounded-lg px-3 py-2 text-sm">
-                <span className="text-stone-500">Joining: </span>
-                <span className="font-semibold text-rose-800">{joinEvent_.name}</span>
+            <form onSubmit={handleJoin} className="mt-5 space-y-3">
+              <div
+                className="rounded-btn px-3.5 py-2.5 text-sm"
+                style={{ backgroundColor: accentVar('soft') }}
+              >
+                <span className="text-ink-muted">{t('home.joiningPrefix')} </span>
+                <span className="font-semibold" style={{ color: accentVar('strong') }}>
+                  {joinEvent_.name}
+                </span>
               </div>
-              <input
+              <Input
                 type="text"
                 value={joinUsername}
                 onChange={(e) => setJoinUsername(e.target.value)}
-                placeholder="Your name"
+                placeholder={t('home.namePlaceholder')}
                 maxLength={40}
                 required
                 autoFocus
-                className="w-full border border-stone-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
               />
-              {joinError && <p className="text-red-600 text-xs">{joinError}</p>}
+              {joinError && <p className="text-xs text-danger-strong">{joinError}</p>}
               <div className="flex gap-2">
-                <button
+                <Button
                   type="button"
-                  onClick={() => { setJoinEvent_(null); setJoinError(''); }}
-                  className="flex-1 border border-stone-300 text-stone-600 font-medium py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-sm"
+                  variant="ghost"
+                  className="flex-1"
+                  onClick={() => {
+                    setJoinEvent_(null);
+                    setJoinError('');
+                  }}
                 >
-                  Back
-                </button>
-                <button
+                  {t('common.back')}
+                </Button>
+                <Button
                   type="submit"
+                  variant="accent"
+                  accent={TASTING_ACCENT}
+                  className="flex-1"
                   disabled={joining || !joinUsername.trim()}
-                  className="flex-1 bg-rose-700 text-white font-medium py-2.5 rounded-lg hover:bg-rose-800 disabled:opacity-50 transition-colors text-sm"
                 >
-                  {joining ? 'Joining…' : 'Join'}
-                </button>
+                  {joining ? t('home.joining') : t('home.join')}
+                </Button>
               </div>
             </form>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

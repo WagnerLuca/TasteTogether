@@ -1,3 +1,8 @@
+<!-- Wagner Luca mark with the "berry" module tab — copied from the design
+     system's docs/favicon-tastetogether.svg. Keep the two in sync. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <text y=".9em" font-size="90">🍷</text>
+  <rect x="68" y="4" width="20" height="10" rx="5" fill="#B87373"/>
+  <polyline points="6,26 24,88 42,30 60,88 78,26 78,88 96,88"
+            fill="none" stroke="#242427" stroke-width="9"
+            stroke-linecap="round" stroke-linejoin="round"/>
 </svg>

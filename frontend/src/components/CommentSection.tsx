@@ -1,5 +1,8 @@
 import { useState, FormEvent } from 'react';
 import { Comment } from '../types';
+import { Button, Input } from '../wl';
+import { TASTING_ACCENT } from '../accent';
+import { useT } from '../useT';
 
 interface Props {
   comments: Comment[];
@@ -7,11 +10,8 @@ interface Props {
   canComment: boolean;
 }
 
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
 export default function CommentSection({ comments, onSubmit, canComment }: Props) {
+  const { t, formatTime } = useT();
   const [text, setText] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -29,19 +29,23 @@ export default function CommentSection({ comments, onSubmit, canComment }: Props
 
   return (
     <div className="space-y-4">
-      <h3 className="font-semibold text-stone-700 text-lg">Comments</h3>
+      <h3 className="text-sm font-semibold uppercase tracking-wider text-ink-muted">
+        {t('comments.title')}
+      </h3>
 
       {comments.length === 0 ? (
-        <p className="text-stone-400 text-sm italic">No comments yet.</p>
+        <p className="text-sm italic text-ink-muted">{t('comments.empty')}</p>
       ) : (
-        <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+        <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
           {comments.map((c) => (
-            <div key={c.id} className="bg-stone-100 rounded-lg px-4 py-3">
-              <div className="flex items-baseline justify-between gap-2 mb-1">
-                <span className="font-medium text-stone-800 text-sm">{c.username}</span>
-                <span className="text-stone-400 text-xs whitespace-nowrap">{formatTime(c.createdAt)}</span>
+            <div key={c.id} className="rounded-btn bg-bg-alt px-4 py-3">
+              <div className="mb-1 flex items-baseline justify-between gap-2">
+                <span className="text-sm font-medium text-ink">{c.username}</span>
+                <span className="whitespace-nowrap text-xs text-ink-muted">
+                  {formatTime(c.createdAt)}
+                </span>
               </div>
-              <p className="text-stone-700 text-sm">{c.text}</p>
+              <p className="text-sm text-ink">{c.text}</p>
             </div>
           ))}
         </div>
@@ -49,21 +53,23 @@ export default function CommentSection({ comments, onSubmit, canComment }: Props
 
       {canComment && onSubmit && (
         <form onSubmit={handleSubmit} className="flex gap-2">
-          <input
+          <Input
             type="text"
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder="Add a comment..."
+            placeholder={t('comments.placeholder')}
             maxLength={500}
-            className="flex-1 border border-stone-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300"
+            className="flex-1"
           />
-          <button
+          <Button
             type="submit"
+            variant="accent"
+            accent={TASTING_ACCENT}
+            size="sm"
             disabled={submitting || !text.trim()}
-            className="bg-rose-700 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-rose-800 disabled:opacity-50 transition-colors"
           >
-            Send
-          </button>
+            {t('comments.send')}
+          </Button>
         </form>
       )}
     </div>

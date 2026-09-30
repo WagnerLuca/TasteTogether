@@ -2,8 +2,20 @@ import axios from 'axios';
 
 const api = axios.create({ baseURL: '/api' });
 
+// The admin token is a JWT scoped to one event. An expired (or pre-JWT) token counts as absent.
 function getAdminToken(code: string): string | null {
-  return localStorage.getItem(`tastetogether_admin_${code}`);
+  const token = localStorage.getItem(`tastetogether_admin_${code}`);
+  try {
+    const payload = JSON.parse(atob(token!.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (payload.exp * 1000 > Date.now()) return token;
+  } catch {
+    // not a JWT
+  }
+  return null;
+}
+
+function adminHeaders(code: string) {
+  return { Authorization: `Bearer ${getAdminToken(code)}` };
 }
 
 function getSession(code: string): { sessionToken: string; username: string } | null {
@@ -28,9 +40,14 @@ export function getStoredUsername(code: string): string | null {
 }
 
 // Events
-export async function createEvent(name: string) {
-  const { data } = await api.post('/events', { name });
-  return data as { event: { id: string; name: string; code: string; createdAt: string }; adminToken: string };
+export async function createEvent(name: string, password: string) {
+  const { data } = await api.post('/events', { name, password });
+  return data as { event: { id: string; name: string; code: string; createdAt: string }; token: string };
+}
+
+export async function adminLogin(code: string, password: string) {
+  const { data } = await api.post(`/events/${code}/admin/login`, { password });
+  saveAdminToken(code, data.token);
 }
 
 export async function getEvent(code: string) {
@@ -42,10 +59,12 @@ export async function getEventStatus(code: string) {
   const adminToken = getAdminToken(code);
   const session = getSession(code);
   const params: Record<string, string> = {};
-  if (adminToken) params.adminToken = adminToken;
   if (session) params.sessionToken = session.sessionToken;
 
-  const { data } = await api.get(`/events/${code}/status`, { params });
+  const { data } = await api.get(`/events/${code}/status`, {
+    params,
+    headers: adminToken ? { Authorization: `Bearer ${adminToken}` } : {},
+  });
   return data;
 }
 
@@ -56,25 +75,22 @@ export async function joinEvent(code: string, username: string) {
 
 // Admin actions
 export async function addTastingItem(code: string, name: string, price: number) {
-  const adminToken = getAdminToken(code)!;
   const { data } = await api.post(`/events/${code}/items`, { name, price }, {
-    headers: { 'X-Admin-Token': adminToken },
+    headers: adminHeaders(code),
   });
   return data;
 }
 
 export async function setActiveItem(code: string, itemId: string | null) {
-  const adminToken = getAdminToken(code)!;
   const { data } = await api.patch(`/events/${code}/active-item`, { itemId }, {
-    headers: { 'X-Admin-Token': adminToken },
+    headers: adminHeaders(code),
   });
   return data;
 }
 
 export async function setResultsRevealed(code: string, revealed: boolean) {
-  const adminToken = getAdminToken(code)!;
   const { data } = await api.patch(`/events/${code}/results`, { revealed }, {
-    headers: { 'X-Admin-Token': adminToken },
+    headers: adminHeaders(code),
   });
   return data as { resultsRevealed: boolean };
 }

@@ -1,3 +1,16 @@
+# TasteTogether — full stack, built from source.
+# `docker compose up --build` then open http://localhost:8080
+#
+# NOTE: the frontend installs @wagnerluca/ui from GitHub Packages, which needs a
+# read:packages token. Export it before building:
+#
+#   export NODE_AUTH_TOKEN=<classic PAT with read:packages>
+#   docker compose up --build
+#
+# It reaches the build as a BuildKit secret (never an ARG), so it stays out of
+# the image. Requires Compose v2.23+ for `secrets.*.environment`.
+#
+# See docker-compose.prod.yml for deploying the pre-built GHCR images instead.
 services:
   postgres:
     image: postgres:16-alpine
@@ -15,14 +28,18 @@ services:
       retries: 10
 
   backend:
+    # Service name must stay "backend": the frontend image's nginx.conf proxies
+    # /api/ to http://backend:3001.
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: tastetogether-backend:latest
+    container_name: tastetogether-backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://tastetogether:tastetogether@postgres:5432/tastetogether
-      PORT: "3001"
-      NODE_ENV: production
+      ConnectionStrings__Default: Host=postgres;Database=tastetogether;Username=tastetogether;Password=tastetogether
+      # Signs the host (admin) JWTs. Fine for a local stack; set JWT_SECRET for anything shared.
+      Jwt__Secret: ${JWT_SECRET:-local-dev-secret-not-for-production-0123456789}
     depends_on:
       postgres:
         condition: service_healthy
@@ -31,11 +48,27 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      secrets:
+        - NODE_AUTH_TOKEN
+    image: tastetogether-frontend:latest
+    container_name: tastetogether-frontend
     restart: unless-stopped
     ports:
-      - "80:80"
+      # 8080 rather than 80, matching the arcade — so several Wagner Luca
+      # modules can run side by side on one machine without a port clash.
+      - "${HTTP_PORT:-8080}:80"
     depends_on:
       - backend
 
 volumes:
   postgres_data:
+
+secrets:
+  # Read from the host env at build time — nothing is written to disk.
+  # Same secret id the portfolio's and the arcade's Dockerfiles use.
+  NODE_AUTH_TOKEN:
+    environment: NODE_AUTH_TOKEN
+
+networks:
+  default:
+    name: tastetogether-network

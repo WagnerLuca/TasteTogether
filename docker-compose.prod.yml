@@ -1,14 +1,25 @@
-# Production compose file — pulls pre-built images from GHCR.
-# Images are published automatically on every push to main/master by
-# .github/workflows/docker-build.yml
+# TasteTogether — deployment using the pre-built images from ghcr.io.
+# Nothing is built here; see docker-compose.yml for the build-from-source setup.
 #
 # Usage:
+#   cp .env.example .env      # then edit POSTGRES_PASSWORD
 #   docker compose -f docker-compose.prod.yml pull
 #   docker compose -f docker-compose.prod.yml up -d
+#   open http://localhost:8080
 #
-# To pin a specific commit instead of latest:
-#   BACKEND_TAG=master-abc1234 FRONTEND_TAG=master-abc1234 docker compose -f docker-compose.prod.yml up -d
-
+# Images come from .github/workflows/ci-cd.yml:
+#   ghcr.io/wagnerluca/tastetogether-backend
+#   ghcr.io/wagnerluca/tastetogether-frontend
+# If the packages are private, pull needs a token once per host:
+#   echo $GHP_READ_TOKEN | docker login ghcr.io -u WagnerLuca --password-stdin
+#
+# Optional env:
+#   IMAGE_TAG         — defaults to latest; pin a release (v1.2.3) or a commit
+#                       (sha-a1b2c3d) for reproducible deploys. One tag for both
+#                       images, as in the arcade.
+#   HTTP_PORT         — host port for the app (default 8080).
+#   POSTGRES_PASSWORD — set this for anything public-facing.
+#   JWT_SECRET        — REQUIRED. Signs the host (admin) tokens; ≥ 32 chars.
 services:
   postgres:
     image: postgres:16-alpine
@@ -26,23 +37,33 @@ services:
       retries: 10
 
   backend:
-    image: ghcr.io/wagnerluca/tastetogether-backend:${BACKEND_TAG:-latest}
+    # Service name must stay "backend": the frontend image's nginx.conf proxies
+    # /api/ to http://backend:3001.
+    image: ghcr.io/wagnerluca/tastetogether-backend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment:
-      DATABASE_URL: postgresql://tastetogether:${POSTGRES_PASSWORD:-tastetogether}@postgres:5432/tastetogether
-      PORT: "3001"
-      NODE_ENV: production
+      ConnectionStrings__Default: Host=postgres;Database=tastetogether;Username=tastetogether;Password=${POSTGRES_PASSWORD:-tastetogether}
+      # Signs the host (admin) JWTs — no default on purpose, see .env.example.
+      Jwt__Secret: ${JWT_SECRET:?set JWT_SECRET in .env (openssl rand -hex 32)}
+    # Not published to the host — the frontend's nginx reaches it on the compose
+    # network. Publish it only if you need to hit the API directly.
+    expose:
+      - "3001"
     depends_on:
       postgres:
         condition: service_healthy
 
   frontend:
-    image: ghcr.io/wagnerluca/tastetogether-frontend:${FRONTEND_TAG:-latest}
+    image: ghcr.io/wagnerluca/tastetogether-frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
     ports:
-      - "${PORT:-80}:80"
+      - "${HTTP_PORT:-8080}:80"
     depends_on:
       - backend
 
 volumes:
   postgres_data:
+
+networks:
+  default:
+    name: tastetogether-network
