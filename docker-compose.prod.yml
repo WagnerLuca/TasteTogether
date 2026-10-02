@@ -45,6 +45,9 @@ services:
       ConnectionStrings__Default: Host=postgres;Database=tastetogether;Username=tastetogether;Password=${POSTGRES_PASSWORD:-tastetogether}
       # Signs the host (admin) JWTs — no default on purpose, see .env.example.
       Jwt__Secret: ${JWT_SECRET:?set JWT_SECRET in .env (openssl rand -hex 32)}
+      # Optional host sign-in with WL Konto (konto/RUNBOOK.md, "Connecting an app"). Empty = off.
+      Konto__Authority: ${KONTO_URL:-}
+      Konto__WebhookSecret: ${KONTO_WEBHOOK_SECRET:-}
     # Not published to the host — the frontend's nginx reaches it on the compose
     # network. Publish it only if you need to hit the API directly.
     expose:

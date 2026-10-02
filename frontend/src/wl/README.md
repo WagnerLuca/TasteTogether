@@ -35,6 +35,8 @@ import them instead.
 | `TopNav.tsx` | `src/components/layout/TopNav.vue` |
 | `Button.tsx`, `Input.tsx`, `Badge.tsx`, `ProgressBar.tsx`, `StatusPill.tsx` | `src/components/base/*.vue` |
 | `Card.tsx` | no direct original — the `rounded-card bg-surface shadow-soft` surface used across the styleguide |
+| `konto.ts` | `src/core/konto.js` (`createKontoAuth`) — **unreleased** in the package; same behaviour and storage keys (`wl-konto:<clientId>`) |
+| `UserMenu.tsx` | `src/components/layout/UserMenu.vue` — **unreleased**; strings = the package's `signIn`/`signOut`/`myAccount`/`accountMenu` |
 
 Two rules carried over from the package, worth restating because breaking them
 fails silently:

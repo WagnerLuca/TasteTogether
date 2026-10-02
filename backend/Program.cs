@@ -17,12 +17,28 @@ if (secret is null || secret.Length < 32)
 var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret));
 
 builder.Services.AddDbContext<Db>(o => o.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(o => o.TokenValidationParameters = new()
+
+// Two kinds of bearer token: the event JWT this backend issues (password login), and — when
+// WL Konto is configured — Konto access tokens for signed-in hosts. The token's issuer picks the
+// scheme; event tokens have none. Konto tokens are verified against Konto's published keys.
+// Empty (compose without KONTO_URL) = WL Konto sign-in off.
+var kontoAuthority = builder.Configuration["Konto:Authority"] is { Length: > 0 } authority ? authority.TrimEnd('/') : null;
+var auth = builder.Services.AddAuthentication("bearer")
+    .AddPolicyScheme("bearer", null, o => o.ForwardDefaultSelector = ctx =>
+        kontoAuthority is not null && BearerIssuer(ctx)?.TrimEnd('/') == kontoAuthority ? "konto" : "event")
+    .AddJwtBearer("event", o => o.TokenValidationParameters = new()
     {
         ValidateIssuer = false,
         ValidateAudience = false,
         IssuerSigningKey = signingKey,
+    });
+if (kontoAuthority is not null)
+    auth.AddJwtBearer("konto", o =>
+    {
+        o.Authority = kontoAuthority;
+        o.Audience = "api:tastetogether";
+        o.RequireHttpsMetadata = builder.Configuration.GetValue("Konto:RequireHttpsMetadata", true);
+        o.MapInboundClaims = false; // keep "sub" as "sub"
     });
 builder.Services.AddAuthorization();
 // Behind nginx every request comes from the proxy, so partition by the client IP it forwards.
@@ -48,6 +64,8 @@ using (var scope = app.Services.CreateScope())
         ALTER TABLE "Event" DROP COLUMN IF EXISTS "adminToken";
         ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "adminPasswordHash" TEXT NOT NULL DEFAULT '';
         ALTER TABLE "TastingItem" ADD COLUMN IF NOT EXISTS "position" INTEGER NOT NULL DEFAULT 0;
+        ALTER TABLE "Event" ADD COLUMN IF NOT EXISTS "ownerSub" TEXT;
+        CREATE INDEX IF NOT EXISTS "Event_ownerSub_idx" ON "Event"("ownerSub");
         """);
 }
 
@@ -60,7 +78,20 @@ string IssueAdminToken(string code) => new JsonWebTokenHandler().CreateToken(new
     SigningCredentials = new SigningCredentials(signingKey, SecurityAlgorithms.HmacSha256),
 });
 
-static bool IsAdmin(ClaimsPrincipal user, string code) => user.FindFirstValue("event") == code;
+// Host of an event: holds its event token (password login), or is the WL Konto account that owns it.
+static bool IsAdmin(ClaimsPrincipal user, Event ev) =>
+    user.FindFirstValue("event") == ev.Code || (KontoSub(user) is { } sub && sub == ev.OwnerSub);
+
+// Only Konto access tokens carry a "sub"; event tokens never do.
+static string? KontoSub(ClaimsPrincipal user) => user.FindFirstValue("sub");
+
+static string? BearerIssuer(HttpContext ctx)
+{
+    var header = ctx.Request.Headers.Authorization.ToString();
+    if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return null;
+    try { return new JsonWebToken(header[7..].Trim()).Issuer; }
+    catch (ArgumentException) { return null; }
+}
 
 static IResult Error(int status, string message) => Results.Json(new { error = message }, statusCode: status);
 
@@ -79,19 +110,23 @@ app.MapGet("/health", () => new { status = "ok" });
 var events = app.MapGroup("/api/events");
 
 // Create a tasting event. The host picks a password and gets an admin JWT back.
-events.MapPost("/", async (CreateEventBody body, Db db) =>
+// Signed in with WL Konto, the host owns the event and the password is optional; without an
+// account the password is the only way back in, so it is required.
+events.MapPost("/", async (CreateEventBody body, ClaimsPrincipal user, Db db) =>
 {
     var name = body.Name?.Trim();
     if (string.IsNullOrEmpty(name)) return Error(400, "Event name is required");
-    if (body.Password is null || body.Password.Length < 6) return Error(400, "Password must be at least 6 characters");
+    var ownerSub = KontoSub(user);
+    if ((ownerSub is null || !string.IsNullOrEmpty(body.Password)) && (body.Password is null || body.Password.Length < 6))
+        return Error(400, "Password must be at least 6 characters");
 
     string code;
     var attempts = 0;
     do code = RandomNumberGenerator.GetString("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", 6);
     while (await db.Events.AnyAsync(e => e.Code == code) && ++attempts < 10);
 
-    var ev = new Event { Name = name, Code = code };
-    ev.AdminPasswordHash = hasher.HashPassword(ev, body.Password);
+    var ev = new Event { Name = name, Code = code, OwnerSub = ownerSub };
+    if (!string.IsNullOrEmpty(body.Password)) ev.AdminPasswordHash = hasher.HashPassword(ev, body.Password);
     db.Events.Add(ev);
     await db.SaveChangesAsync();
 
@@ -120,7 +155,7 @@ events.MapGet("/{code}/status", async (string code, string? sessionToken, Claims
         .FirstOrDefaultAsync(e => e.Code == code);
     if (ev is null) return Error(404, "Event not found");
 
-    var isAdmin = IsAdmin(user, code);
+    var isAdmin = IsAdmin(user, ev);
     var me = sessionToken is null ? null : ev.Participants.FirstOrDefault(p => p.SessionToken == sessionToken);
     var active = ev.TastingItems.FirstOrDefault(i => i.IsActive);
     var myRating = me is null ? null : active?.Ratings.FirstOrDefault(r => r.ParticipantId == me.Id);
@@ -148,10 +183,22 @@ events.MapGet("/{code}/status", async (string code, string? sessionToken, Claims
         }),
         // null when no session token was sent; false when it was but isn't known (e.g. removed by the host).
         sessionRecognized = sessionToken is null ? (bool?)null : me is not null,
+        // The host view needs to know: a signed-in Konto user may or may not own this event.
+        isAdmin,
         hasRatedActiveItem = myRating is not null,
         myRatingForActiveItem = myRating?.Score,
     });
 });
+
+// Events the signed-in WL Konto user owns ("Meine Verkostungen").
+events.MapGet("/mine", async (ClaimsPrincipal user, Db db) =>
+{
+    if (KontoSub(user) is not { } sub) return Error(401, "Sign in with WL Konto");
+    var mine = await db.Events.Where(e => e.OwnerSub == sub).OrderByDescending(e => e.CreatedAt)
+        .Select(e => new { e.Id, e.Name, e.Code, e.CreatedAt, e.ResultsRevealed, items = e.TastingItems.Count, participants = e.Participants.Count })
+        .ToListAsync();
+    return Results.Ok(mine);
+}).RequireAuthorization();
 
 events.MapPost("/{code}/join", async (string code, JoinBody body, Db db) =>
 {
@@ -172,9 +219,12 @@ events.MapPost("/{code}/join", async (string code, JoinBody body, Db db) =>
 var admin = events.MapGroup("/{code}")
     .RequireAuthorization()
     .AddEndpointFilter(async (ctx, next) =>
-        IsAdmin(ctx.HttpContext.User, (string)ctx.HttpContext.Request.RouteValues["code"]!)
-            ? await next(ctx)
-            : Error(403, "Not an admin of this event"));
+    {
+        var code = (string)ctx.HttpContext.Request.RouteValues["code"]!;
+        var ev = await ctx.HttpContext.RequestServices.GetRequiredService<Db>().Events.AsNoTracking().FirstOrDefaultAsync(e => e.Code == code);
+        if (ev is null) return Error(404, "Event not found");
+        return IsAdmin(ctx.HttpContext.User, ev) ? await next(ctx) : Error(403, "Not an admin of this event");
+    });
 
 admin.MapPost("/items", async (string code, ItemBody body, Db db) =>
 {
@@ -269,6 +319,29 @@ events.MapPost("/{code}/items/{itemId}/comments", async (string code, string ite
     db.Comments.Add(comment);
     await db.SaveChangesAsync();
     return Results.Json(new { comment.Id, comment.Text, comment.CreatedAt, me.Username }, statusCode: 201);
+});
+
+// WL Konto account events, signed with the shared webhook secret (see konto/RUNBOOK.md):
+// user.delete-requested → no objection (events don't need an owner);
+// user.deleted → the account's events lose their owner; the event password still works.
+app.MapPost("/api/konto/webhook", async (HttpRequest req, Db db) =>
+{
+    var secret = app.Configuration["Konto:WebhookSecret"];
+    if (string.IsNullOrEmpty(secret)) return Results.NotFound();
+    using var reader = new StreamReader(req.Body);
+    var body = await reader.ReadToEndAsync();
+    var timestamp = req.Headers["X-Konto-Timestamp"].ToString();
+    var expected = "sha256=" + Convert.ToHexStringLower(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), Encoding.UTF8.GetBytes($"{timestamp}.{body}")));
+    var stale = !long.TryParse(timestamp, out var ts) || Math.Abs(DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ts) > 300;
+    if (stale || !CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(expected), Encoding.ASCII.GetBytes(req.Headers["X-Konto-Signature"].ToString())))
+        return Results.Unauthorized();
+
+    using var doc = System.Text.Json.JsonDocument.Parse(body);
+    var type = doc.RootElement.GetProperty("type").GetString();
+    var sub = doc.RootElement.GetProperty("data").GetProperty("sub").GetString();
+    if (type == "user.deleted" && sub is not null)
+        await db.Events.Where(e => e.OwnerSub == sub).ExecuteUpdateAsync(s => s.SetProperty(e => e.OwnerSub, (string?)null));
+    return Results.Ok(new { allow = true });
 });
 
 app.Run();

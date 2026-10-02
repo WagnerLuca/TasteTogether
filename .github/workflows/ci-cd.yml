@@ -99,3 +99,6 @@ jobs:
           cache-to: type=gha,scope=frontend,mode=max
           secrets: |
             NODE_AUTH_TOKEN=${{ secrets.GHP_READ_TOKEN }}
+          # Optional WL Konto sign-in: set the repository variable KONTO_URL to turn it on.
+          build-args: |
+            VITE_KONTO_URL=${{ vars.KONTO_URL }}

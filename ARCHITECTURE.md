@@ -187,6 +187,12 @@ Comments are scoped to individual tasting items. Each item carries its own `comm
 
 ### Authentication
 
+- **Host via WL Konto (optional)**: `Authorization: Bearer <Konto access token>` (ES256, audience
+  `api:tastetogether`). Counts as host for events whose `ownerSub` is the token's `sub`.
+  `POST /` with a Konto token sets the owner and makes the password optional;
+  `GET /mine` lists the account's events; `POST /api/konto/webhook` receives Konto's signed
+  account events (`user.deleted` → owner cleared).
+
 - **Admin**: `Authorization: Bearer <JWT>`. HS256, signed with `Jwt:Secret`,
   one claim `event: <code>`, valid 24 h. A token for event A gets `403` on event B.
 - **Participant**: `X-Session-Token: <token>` header — a server-generated UUID,

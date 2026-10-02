@@ -4,7 +4,10 @@ import Home from './pages/Home';
 import AdminEvent from './pages/AdminEvent';
 import ParticipantEvent from './pages/ParticipantEvent';
 import Board from './pages/Board';
+import AuthCallback from './pages/AuthCallback';
 import { TopNav, useTheme, useLocale } from './wl';
+import UserMenu from './wl/UserMenu';
+import { konto, useKontoUser } from './konto';
 import { TASTING_ACCENT } from './accent';
 import { useT } from './useT';
 
@@ -25,6 +28,7 @@ export default function App() {
   const { init: initTheme } = useTheme();
   const { init: initLocale } = useLocale();
   const { t } = useT();
+  const kontoUser = useKontoUser();
 
   useEffect(() => {
     initTheme();
@@ -40,7 +44,18 @@ export default function App() {
         <Route
           element={
             <div className="flex min-h-screen flex-col">
-              <TopNav accent={TASTING_ACCENT} product={t('brand.product')} />
+              <TopNav accent={TASTING_ACCENT} product={t('brand.product')}>
+                {/* Optional host sign-in with WL Konto; participants never need it. */}
+                {konto && (
+                  <UserMenu
+                    user={kontoUser}
+                    accountUrl={konto.accountUrl}
+                    accent={TASTING_ACCENT}
+                    onSignIn={() => konto!.login()}
+                    onSignOut={() => konto!.logout()}
+                  />
+                )}
+              </TopNav>
               <main className="flex-1">
                 <Outlet />
               </main>
@@ -48,6 +63,7 @@ export default function App() {
           }
         >
           <Route path="/" element={<Home />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/admin/:code" element={<AdminEvent />} />
           <Route path="/event/:code" element={<ParticipantEvent />} />
           <Route path="*" element={<Navigate to="/" replace />} />

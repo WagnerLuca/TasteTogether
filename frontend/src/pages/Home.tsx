@@ -1,19 +1,30 @@
-import { useState, FormEvent } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { createEvent, getEvent, joinEvent, saveAdminToken, saveSession } from '../api/client';
+import { useState, useEffect, FormEvent } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { createEvent, getEvent, joinEvent, listMyEvents, saveAdminToken, saveSession } from '../api/client';
+import { useKontoUser } from '../konto';
 import { Button, Card, Input, LogoMark } from '../wl';
 import { TASTING_ACCENT, accentVar } from '../accent';
 import { useT } from '../useT';
 
 export default function Home() {
   const navigate = useNavigate();
-  const { t } = useT();
+  const { t, formatDate } = useT();
+  const kontoUser = useKontoUser();
+  const [mine, setMine] = useState<Awaited<ReturnType<typeof listMyEvents>>>([]);
+
+  useEffect(() => {
+    if (kontoUser) listMyEvents().then(setMine).catch(() => setMine([]));
+    else setMine([]);
+  }, [kontoUser]);
 
   // Create flow
   const [createName, setCreateName] = useState('');
   const [createPassword, setCreatePassword] = useState('');
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState('');
+
+  // Signed in with WL Konto: the host owns what they create, so the password is optional.
+  const passwordOk = kontoUser ? createPassword.length === 0 || createPassword.length >= 6 : createPassword.length >= 6;
 
   // Join flow
   const [joinCode, setJoinCode] = useState('');
@@ -25,7 +36,7 @@ export default function Home() {
 
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
-    if (!createName.trim() || createPassword.length < 6) return;
+    if (!createName.trim() || !passwordOk) return;
     setCreating(true);
     setCreateError('');
     try {
@@ -107,19 +118,19 @@ export default function Home() {
               type="password"
               value={createPassword}
               onChange={(e) => setCreatePassword(e.target.value)}
-              placeholder={t('home.passwordPlaceholder')}
+              placeholder={kontoUser ? t('konto.passwordOptional') : t('home.passwordPlaceholder')}
               minLength={6}
               autoComplete="new-password"
-              required
+              required={!kontoUser}
             />
-            <p className="text-xs text-ink-muted">{t('home.passwordHint')}</p>
+            <p className="text-xs text-ink-muted">{kontoUser ? t('konto.signedInHint') : t('home.passwordHint')}</p>
             {createError && <p className="text-xs text-danger-strong">{createError}</p>}
             <Button
               type="submit"
               variant="accent"
               accent={TASTING_ACCENT}
               full
-              disabled={creating || !createName.trim() || createPassword.length < 6}
+              disabled={creating || !createName.trim() || !passwordOk}
             >
               {creating ? t('home.creating') : t('home.create')}
             </Button>
@@ -194,6 +205,33 @@ export default function Home() {
           )}
         </Card>
       </div>
+
+      {kontoUser && (
+        <Card className="mt-5">
+          <h2 className="text-lg font-semibold text-ink">{t('konto.mineTitle')}</h2>
+          {mine.length === 0 ? (
+            <p className="mt-2 text-sm italic text-ink-muted">{t('konto.mineEmpty')}</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-border">
+              {mine.map((e) => (
+                <li key={e.id}>
+                  <Link to={`/admin/${e.code}`} className="-mx-2 flex items-center gap-3 rounded-btn px-2 py-3 hover:bg-bg-alt">
+                    <span className="font-mono text-sm font-bold tracking-widest" style={{ color: accentVar('strong') }}>{e.code}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-ink">{e.name}</span>
+                      <span className="block text-xs text-ink-muted">
+                        {t('konto.mineMeta', { items: e.items, participants: e.participants })} · {formatDate(e.createdAt)}
+                        {e.resultsRevealed && ` · ${t('konto.finished')}`}
+                      </span>
+                    </span>
+                    <span aria-hidden="true" className="text-ink-muted">→</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      )}
     </div>
   );
 }

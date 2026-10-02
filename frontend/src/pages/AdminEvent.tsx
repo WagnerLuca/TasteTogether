@@ -18,12 +18,16 @@ import { Badge, Button, Card, Input, ProgressBar } from '../wl';
 import { TASTING_ACCENT, accentVar } from '../accent';
 import { useT } from '../useT';
 import { useEventStatus } from '../useEventStatus';
+import { konto, useKontoUser } from '../konto';
 
 export default function AdminEvent() {
   const code = useParams<{ code: string }>().code?.toUpperCase();
   const { t, tp, formatPrice, formatScore } = useT();
 
-  const [authed, setAuthed] = useState(() => !!code && hasAdminToken(code));
+  // Host = event token (password login) or the WL Konto account owning the event. A signed-in
+  // Konto user is tried first; the status response's isAdmin then says whether they own it.
+  const kontoUser = useKontoUser();
+  const [authed, setAuthed] = useState(() => !!code && (hasAdminToken(code) || !!kontoUser));
   const [password, setPassword] = useState('');
   const [loggingIn, setLoggingIn] = useState(false);
   const [loginError, setLoginError] = useState('');
@@ -154,13 +158,15 @@ export default function AdminEvent() {
     setTimeout(() => setCopied(null), 2000);
   }
 
-  if (!authed)
+  const notHost = !!status && !status.isAdmin && !!code && !hasAdminToken(code);
+
+  if (!authed || notHost)
     return (
       <div className="mx-auto w-full max-w-sm px-4 py-16">
         <Card>
           <Badge accent={TASTING_ACCENT}>{t('admin.eyebrow')}</Badge>
           <h1 className="mt-3 text-lg font-semibold text-ink">{t('admin.loginTitle')}</h1>
-          <p className="mt-1 text-xs text-ink-muted">{t('admin.loginHint')}</p>
+          <p className="mt-1 text-xs text-ink-muted">{notHost ? t('konto.loginHintSignedIn') : t('admin.loginHint')}</p>
           <form onSubmit={handleLogin} className="mt-5 space-y-3">
             <Input
               type="password"
@@ -182,6 +188,11 @@ export default function AdminEvent() {
               {loggingIn ? t('admin.loggingIn') : t('admin.login')}
             </Button>
           </form>
+          {konto && !kontoUser && (
+            <Button variant="ghost" full className="mt-3" onClick={() => konto!.login()}>
+              {t('konto.loginWithKonto')}
+            </Button>
+          )}
         </Card>
       </div>
     );

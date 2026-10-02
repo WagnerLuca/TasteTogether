@@ -20,7 +20,9 @@ RUN --mount=type=secret,id=NODE_AUTH_TOKEN \
     NODE_AUTH_TOKEN="$(cat /run/secrets/NODE_AUTH_TOKEN)" npm ci
 
 COPY . .
-RUN npm run build
+# Public URL of WL Konto for the optional host sign-in; empty = feature off. Not a secret.
+ARG VITE_KONTO_URL=
+RUN VITE_KONTO_URL="$VITE_KONTO_URL" npm run build
 
 
 FROM nginx:1.25-alpine

@@ -148,6 +148,24 @@ add the tabs *and* a `MobileNav` — and gate both on `sm`, never `md`.
 `App.tsx` on purpose — it is full-bleed, `h-screen overflow-hidden`, and must
 never scroll. Its QR code follows the same white-frame exception as `AdminEvent`.
 
+## WL Konto sign-in (optional, for hosts only)
+
+Hosts may sign in with WL Konto (`konto/` in the workspace — the suite's identity provider).
+Participants never do. Off unless `VITE_KONTO_URL` is set at build time (dev: defaults to
+`http://localhost:5181`) and `Konto:Authority` on the backend.
+
+- Frontend: `src/konto.ts` (instance + `useKontoUser()`), `src/wl/konto.ts` (port of the
+  design system's unreleased `createKontoAuth`), `src/wl/UserMenu.tsx`, `/auth/callback`.
+  Admin calls send the event token if the browser has one, else the Konto access token.
+- Backend: a policy scheme picks the JWT handler by the token's issuer — event tokens (no `iss`)
+  → `event`, Konto tokens → `konto` (validated against Konto's JWKS, audience
+  `api:tastetogether`). Only Konto tokens carry `sub`. `Event.OwnerSub` = the creator's `sub`;
+  `IsAdmin` = event claim matches **or** `sub == OwnerSub`. Signed in, the event password is
+  optional. `GET /api/events/mine`; `POST /api/konto/webhook` (HMAC-signed; `user.deleted`
+  clears `OwnerSub`, the password keeps working).
+- `KONTO_URL=http://localhost:5181 node backend/smoke-test.mjs` also runs the Konto checks
+  (real Konto + Mailpit). The browser round trip lives in `konto/frontend/e2e/tastetogether.spec.js`.
+
 ## Backend gotchas
 
 - **Two auth models side by side.** Host: `Authorization: Bearer <JWT>` with one

@@ -9,6 +9,8 @@ public class Event
     public string Name { get; set; } = "";
     public string Code { get; set; } = "";
     public string AdminPasswordHash { get; set; } = "";
+    /// <summary>The WL Konto account (OIDC <c>sub</c>) that created the event, if the host was signed in.</summary>
+    public string? OwnerSub { get; set; }
     public bool ResultsRevealed { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public List<Participant> Participants { get; set; } = [];

@@ -36,6 +36,7 @@ export function useT() {
       price: new Intl.NumberFormat(tag, { style: 'currency', currency: 'EUR' }),
       score: new Intl.NumberFormat(tag, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
       time: new Intl.DateTimeFormat(tag, { hour: '2-digit', minute: '2-digit' }),
+      date: new Intl.DateTimeFormat(tag, { dateStyle: 'medium' }),
     };
   }, [locale]);
 
@@ -68,5 +69,7 @@ export function useT() {
     formatScore: (value: number) => format.score.format(value),
     /** ISO timestamp -> localised "HH:MM" */
     formatTime: (iso: string) => format.time.format(new Date(iso)),
+    /** ISO timestamp -> localised date ('2. Okt. 2026' / '2 Oct 2026') */
+    formatDate: (iso: string) => format.date.format(new Date(iso)),
   };
 }

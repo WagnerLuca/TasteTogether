@@ -40,6 +40,9 @@ services:
       ConnectionStrings__Default: Host=postgres;Database=tastetogether;Username=tastetogether;Password=tastetogether
       # Signs the host (admin) JWTs. Fine for a local stack; set JWT_SECRET for anything shared.
       Jwt__Secret: ${JWT_SECRET:-local-dev-secret-not-for-production-0123456789}
+      # Optional host sign-in with WL Konto (konto/RUNBOOK.md, "Connecting an app"). Empty = off.
+      Konto__Authority: ${KONTO_URL:-}
+      Konto__WebhookSecret: ${KONTO_WEBHOOK_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -50,6 +53,8 @@ services:
       dockerfile: Dockerfile
       secrets:
         - NODE_AUTH_TOKEN
+      args:
+        VITE_KONTO_URL: ${KONTO_URL:-}
     image: tastetogether-frontend:latest
     container_name: tastetogether-frontend
     restart: unless-stopped

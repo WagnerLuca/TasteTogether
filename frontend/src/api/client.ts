@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { konto } from '../konto';
 
 const api = axios.create({ baseURL: '/api' });
 
@@ -14,8 +15,17 @@ function getAdminToken(code: string): string | null {
   return null;
 }
 
-function adminHeaders(code: string) {
-  return { Authorization: `Bearer ${getAdminToken(code)}` };
+/**
+ * Who is acting as host: the event token from a password login wins; otherwise the WL Konto
+ * access token of a signed-in host — the backend accepts it if that account owns the event.
+ */
+async function hostToken(code?: string): Promise<string | null> {
+  return (code ? getAdminToken(code) : null) ?? (await konto?.accessToken()) ?? null;
+}
+
+async function adminHeaders(code: string) {
+  const token = await hostToken(code);
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 function getSession(code: string): { sessionToken: string; username: string } | null {
@@ -45,7 +55,7 @@ export function getStoredUsername(code: string): string | null {
 
 // Events
 export async function createEvent(name: string, password: string) {
-  const { data } = await api.post('/events', { name, password });
+  const { data } = await api.post('/events', { name, password: password || undefined }, { headers: await adminHeaders('') });
   return data as { event: { id: string; name: string; code: string; createdAt: string }; token: string };
 }
 
@@ -65,9 +75,10 @@ export async function getEventStatus(code: string) {
   const params: Record<string, string> = {};
   if (session) params.sessionToken = session.sessionToken;
 
+  const token = adminToken ?? (await konto?.accessToken()) ?? null;
   const { data } = await api.get(`/events/${code}/status`, {
     params,
-    headers: adminToken ? { Authorization: `Bearer ${adminToken}` } : {},
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   return data;
 }
@@ -80,31 +91,37 @@ export async function joinEvent(code: string, username: string) {
 // Admin actions
 export async function addTastingItem(code: string, name: string, price: number) {
   const { data } = await api.post(`/events/${code}/items`, { name, price }, {
-    headers: adminHeaders(code),
+    headers: await adminHeaders(code),
   });
   return data;
 }
 
 export async function reorderItems(code: string, itemIds: string[]) {
-  await api.put(`/events/${code}/items/order`, { itemIds }, { headers: adminHeaders(code) });
+  await api.put(`/events/${code}/items/order`, { itemIds }, { headers: await adminHeaders(code) });
 }
 
 export async function setActiveItem(code: string, itemId: string | null) {
   const { data } = await api.patch(`/events/${code}/active-item`, { itemId }, {
-    headers: adminHeaders(code),
+    headers: await adminHeaders(code),
   });
   return data;
 }
 
 export async function setResultsRevealed(code: string, revealed: boolean) {
   const { data } = await api.patch(`/events/${code}/results`, { revealed }, {
-    headers: adminHeaders(code),
+    headers: await adminHeaders(code),
   });
   return data as { resultsRevealed: boolean };
 }
 
 export async function removeParticipant(code: string, participantId: string) {
-  await api.delete(`/events/${code}/participants/${participantId}`, { headers: adminHeaders(code) });
+  await api.delete(`/events/${code}/participants/${participantId}`, { headers: await adminHeaders(code) });
+}
+
+/** The signed-in WL Konto user's own events ("Meine Verkostungen"). */
+export async function listMyEvents() {
+  const { data } = await api.get('/events/mine', { headers: await adminHeaders('') });
+  return data as { id: string; name: string; code: string; createdAt: string; resultsRevealed: boolean; items: number; participants: number }[];
 }
 
 // Participant actions

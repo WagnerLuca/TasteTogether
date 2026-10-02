@@ -43,6 +43,27 @@ export const messages = {
     } as Message,
   },
 
+  konto: {
+    callbackFailed: {
+      de: 'Die Anmeldung mit WL Konto hat nicht geklappt. Bitte versuch es noch einmal.',
+      en: 'Signing in with WL Konto failed. Please try again.',
+    } as Message,
+    signedInHint: {
+      de: 'Du bist mit WL Konto angemeldet — die Verkostung gehört dir. Ein Passwort brauchst du nur, wenn du auch ohne Konto Gastgeber sein willst.',
+      en: 'You are signed in with WL Konto — the event is yours. A password is only needed if you want to host without your account too.',
+    } as Message,
+    passwordOptional: { de: 'Gastgeber-Passwort (optional)', en: 'Host password (optional)' } as Message,
+    mineTitle: { de: 'Meine Verkostungen', en: 'My tastings' } as Message,
+    mineEmpty: { de: 'Noch keine eigenen Verkostungen.', en: 'No tastings of your own yet.' } as Message,
+    mineMeta: { de: '{items} Proben · {participants} Teilnehmende', en: '{items} items · {participants} participants' } as Message,
+    finished: { de: 'beendet', en: 'finished' } as Message,
+    loginHintSignedIn: {
+      de: 'Du bist mit WL Konto angemeldet, aber nicht Gastgeber dieser Verkostung. Mit dem Gastgeber-Passwort geht es trotzdem.',
+      en: "You are signed in with WL Konto but you don't host this event. The host password still works.",
+    } as Message,
+    loginWithKonto: { de: 'Mit WL Konto anmelden', en: 'Sign in with WL Konto' } as Message,
+  },
+
   home: {
     hostTitle: { de: 'Verkostung veranstalten', en: 'Host a tasting' } as Message,
     hostHint: {

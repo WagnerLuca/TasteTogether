@@ -42,6 +42,8 @@ export interface EventStatus {
   items: TastingItem[];
   /** null when no session token was sent; false when it's unknown (e.g. removed by the host). */
   sessionRecognized: boolean | null;
+  /** True for the host: event token, or the WL Konto account that owns the event. */
+  isAdmin: boolean;
   hasRatedActiveItem: boolean;
   myRatingForActiveItem: number | null;
 }

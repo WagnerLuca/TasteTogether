@@ -105,4 +105,80 @@ await expect(200, 'reactivate', 'PATCH', `/${code}/active-item`, { itemId: item 
 s = await expect(200, 'status after reactivate', 'GET', `/${code}/status`);
 assert.equal(s.event.resultsRevealed, false, 'activating hides results again');
 
+// ── WL Konto (optional): KONTO_URL=http://localhost:5181 MAILPIT_URL=http://localhost:8026 ──
+// Signs a real Konto user up, runs the code flow with PKCE, and checks ownership end to end.
+if (process.env.KONTO_URL) {
+  const { createHash, createHmac, randomBytes } = await import('node:crypto');
+  const KONTO = process.env.KONTO_URL;
+  const MAILPIT = process.env.MAILPIT_URL ?? 'http://localhost:8026';
+
+  async function kontoUser(name) {
+    const email = `tt-${randomBytes(4).toString('hex')}@konto.local`;
+    const jar = new Map();
+    const call = async (path, init = {}) => {
+      const res = await fetch(KONTO + path, {
+        ...init,
+        redirect: 'manual',
+        headers: { 'X-Konto': '1', 'Content-Type': 'application/json', Cookie: [...jar].map(([k, v]) => `${k}=${v}`).join('; '), ...init.headers },
+      });
+      for (const c of res.headers.getSetCookie()) { const [kv] = c.split(';'); const i = kv.indexOf('='); jar.set(kv.slice(0, i), kv.slice(i + 1)); }
+      return res;
+    };
+    await call('/api/flows/signup/start', { method: 'POST', body: '{}' });
+    await call('/api/flows/signup', { method: 'POST', body: JSON.stringify({ email, displayName: name, password: 'Gelbe Giraffen tanzen leise q7Rz' }) });
+    let code;
+    for (let i = 0; i < 20 && !code; i++) {
+      const found = await (await fetch(`${MAILPIT}/api/v1/search?query=${encodeURIComponent(`to:"${email}"`)}`)).json();
+      code = found.messages?.map((m) => m.Subject.match(/\d{6}/)?.[0]).find(Boolean);
+      if (!code) await new Promise((r) => setTimeout(r, 200));
+    }
+    assert.ok((await (await call('/api/flows/signup', { method: 'POST', body: JSON.stringify({ code }) })).json()).done, 'konto signup');
+
+    const verifier = randomBytes(32).toString('base64url');
+    const redirectUri = 'http://localhost:5173/auth/callback';
+    const auth = await call('/connect/authorize?' + new URLSearchParams({
+      client_id: 'tastetogether', redirect_uri: redirectUri, response_type: 'code', state: 's',
+      scope: 'openid profile email offline_access api:tastetogether',
+      code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
+    }));
+    const authCode = new URL(auth.headers.get('location')).searchParams.get('code');
+    const tokens = await (await fetch(KONTO + '/connect/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'authorization_code', client_id: 'tastetogether', code: authCode, redirect_uri: redirectUri, code_verifier: verifier }),
+    })).json();
+    const sub = JSON.parse(Buffer.from(tokens.access_token.split('.')[1], 'base64url')).sub;
+    return { headers: { Authorization: `Bearer ${tokens.access_token}` }, sub };
+  }
+
+  const owner = await kontoUser('Owner');
+  const stranger = await kontoUser('Stranger');
+
+  // Signed in, no password needed; the event belongs to the account.
+  const own = await expect(201, 'konto: create without password', 'POST', '/', { name: 'Konto-Verkostung' }, owner.headers);
+  await expect(400, 'konto: anonymous still needs a password', 'POST', '/', { name: 'x' });
+  const mine = await expect(200, 'konto: my events', 'GET', '/mine', undefined, owner.headers);
+  assert.deepEqual(mine.map((e) => e.code), [own.event.code]);
+  await expect(401, 'konto: /mine needs Konto', 'GET', '/mine');
+
+  // The owner is host without any event token; another account is not.
+  await expect(201, 'konto: owner adds item', 'POST', `/${own.event.code}/items`, { name: 'Weißburgunder', price: 11 }, owner.headers);
+  await expect(403, 'konto: stranger is no host', 'POST', `/${own.event.code}/items`, { name: 'x', price: 1 }, stranger.headers);
+  assert.equal((await req('GET', `/${own.event.code}/status`, undefined, owner.headers)).data.isAdmin, true);
+  assert.equal((await req('GET', `/${own.event.code}/status`, undefined, stranger.headers)).data.isAdmin, false);
+  // A forged token signed by someone else is just anonymous — never a host.
+  await expect(401, 'konto: forged token', 'POST', `/${own.event.code}/items`, { name: 'x', price: 1 },
+    { Authorization: 'Bearer ' + [Buffer.from('{"alg":"HS256"}').toString('base64url'), Buffer.from(JSON.stringify({ iss: KONTO + '/', sub: owner.sub, aud: 'api:tastetogether' })).toString('base64url'), 'x'].join('.') });
+
+  // Konto says the account was deleted: the event loses its owner.
+  const body = JSON.stringify({ type: 'user.deleted', data: { sub: owner.sub } });
+  const ts = String(Math.floor(Date.now() / 1000));
+  const sign = (secret) => 'sha256=' + createHmac('sha256', secret).update(`${ts}.${body}`).digest('hex');
+  const hook = (signature) => fetch(B.replace('/api/events', '/api/konto/webhook'), { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Konto-Timestamp': ts, 'X-Konto-Signature': signature }, body });
+  assert.equal((await hook(sign('wrong secret'))).status, 401, 'konto: unsigned webhook refused');
+  assert.equal((await hook(sign('dev-webhook-secret-tastetogether'))).status, 200, 'konto: signed webhook accepted');
+  assert.deepEqual(await expect(200, 'konto: owner gone', 'GET', '/mine', undefined, owner.headers), []);
+  console.log('OK — WL Konto checks passed');
+}
+
 console.log('OK — all checks passed');
