@@ -1,7 +1,7 @@
 /**
- * Port of `createKontoAuth` from the design system's `src/core/konto.js` (unreleased —
- * consumers still pin @wagnerluca/ui ^0.0.2). Same behaviour, same storage keys: once the
- * package ships it, delete this file and import from '@wagnerluca/ui/core'.
+ * Port of `createKontoAuth` from the design system's `src/core/konto.js`. The package (0.1.0)
+ * ships it as plain JS without type definitions, so this TS copy stays. Same behaviour, same
+ * storage keys — keep the two in step.
  *
  * Sign in with WL Konto: authorization code + PKCE, tokens in sessionStorage, refresh with a
  * single in-flight request (refresh tokens rotate), logout ends the Konto session too.

@@ -35,7 +35,9 @@ function readStored(): boolean {
 let isDark = readStored();
 
 function apply(value: boolean): void {
+  // Both classes: without .light, tokens.css follows a dark system setting.
   document.documentElement.classList.toggle('dark', value);
+  document.documentElement.classList.toggle('light', !value);
   try {
     localStorage.setItem(STORAGE_KEY, value ? 'dark' : 'light');
   } catch {

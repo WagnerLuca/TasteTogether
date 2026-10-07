@@ -1,6 +1,7 @@
 /* The design system's colour tokens — every Tailwind colour in the shared
    preset resolves to one of these CSS variables, defined twice (:root and
    .dark). This import must come first so the variables exist before use. */
+@import '@wagnerluca/ui/fonts.css';
 @import '@wagnerluca/ui/tokens.css';
 
 @tailwind base;
